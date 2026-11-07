@@ -1,0 +1,32 @@
+name: Skell-Afar macOS VST3 / Standalone
+on:
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G Xcode
+      - name: Compile Release
+        run: cmake --build build --config Release --parallel 2
+      - name: Run physics, throat, and scene tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package macOS binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin="$(find build -type d -name 'Skell-Afar.vst3' | head -n 1)"
+          app="$(find build -type d -name 'Skell-Afar.app' | head -n 1)"
+          test -n "$plugin" && test -n "$app"
+          mkdir -p dist
+          cp -R "$plugin" "$app" dist/
+          ditto -c -k --sequesterRsrc --keepParent dist Skell-Afar-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Afar-macOS
+          path: Skell-Afar-macOS.zip
+          if-no-files-found: error
