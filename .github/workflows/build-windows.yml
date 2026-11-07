@@ -1,0 +1,33 @@
+name: Skell-Afar Windows VST3 / Standalone
+on:
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure JUCE and pinned SkellCore
+        run: cmake -S . -B build -A x64
+      - name: Compile Release
+        run: cmake --build build --config Release --parallel 2
+      - name: Run physics, throat, and scene tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package VST3 and standalone
+        shell: pwsh
+        run: |
+          $plugin = Get-ChildItem -Path build -Directory -Recurse -Filter '*.vst3' | Select-Object -First 1
+          if (-not $plugin) { throw 'Skell-Afar VST3 bundle missing' }
+          $app = Get-ChildItem -Path build -File -Recurse -Filter 'Skell-Afar.exe' | Select-Object -First 1
+          if (-not $app) { throw 'Skell-Afar standalone missing' }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item $plugin.FullName -Destination 'dist/Skell-Afar.vst3' -Recurse
+          Copy-Item $app.FullName -Destination 'dist/Skell-Afar.exe'
+          Compress-Archive -Path dist/* -DestinationPath 'Skell-Afar-Windows.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Afar-Windows-VST3-Standalone
+          path: Skell-Afar-Windows.zip
+          if-no-files-found: error
