@@ -19,6 +19,8 @@ public:
         lowPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 240.0 / sr));
         highPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 3100.0 / sr));
         texturePole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 36.0 / sr));
+        raspPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * std::min(7800.0,sr*.20) / sr));
+        sibilancePole = static_cast<float>(1.0-std::exp(-1.0/(sr*.008)));
         macroPole = static_cast<float>(1.0-std::exp(-1.0 / (sr * .025)));
         reset();
     }
@@ -40,7 +42,10 @@ public:
     static std::array<float,4> morphWeights(float amount) noexcept {
         const float v = std::clamp(std::isfinite(amount) ? amount : 0.f,0.f,1.f)*3.f;
         const int section = std::min(2,static_cast<int>(v));
-        const float fraction = std::clamp(v-static_cast<float>(section),0.f,1.f);
+        const float position = std::clamp(v-static_cast<float>(section),0.f,1.f);
+        // C1-smooth morph boundaries: eliminates a sudden change in the slope
+        // when the user automates across AIRY and RASPY landmarks.
+        const float fraction = position*position*(3.f-2.f*position);
         // Equal power is inappropriate for strongly correlated morphs; linear weights
         // ensure continuity, no extra level spike, and exact CLEAN at zero.
         std::array<float,4> w {};
@@ -49,7 +54,8 @@ public:
         return w;
     }
 private:
-    struct Channel { float env=0.f, low=0.f, smoothedHigh=0.f, creak=0.f; };
+    struct Channel { float env=0.f, low=0.f, smoothedHigh=0.f, creak=0.f;
+        float raspFiltered=0.f, gritFiltered=0.f, highEnergy=0.f, midEnergy=0.f; };
     float processOne(float x, Channel& c, float noise,const std::array<float,4>& w) noexcept {
         x=std::clamp(x,-8.f,8.f);
         const float amplitude=std::abs(x);
@@ -62,19 +68,27 @@ private:
         c.smoothedHigh += highPole*(x-c.smoothedHigh);
         const float mid=c.smoothedHigh-c.low;
         const float upper=x-c.smoothedHigh;
+        c.highEnergy+=sibilancePole*(std::abs(upper)-c.highEnergy);
+        c.midEnergy+=sibilancePole*(std::abs(mid)-c.midEnergy);
+        // Preserve fricatives/transients: keep vocal texture on the body band
+        // but back it off when high-band consonants dominate that body band.
+        const float consonant=std::clamp((c.highEnergy-c.midEnergy*1.8f)/(.015f+c.highEnergy),0.f,1.f);
+        const float bodyGate=gate*(1.f-.78f*consonant);
         const float breath=noise * gate * std::min(.18f,c.env * .40f);
         const float airy=x + upper*.12f*gate + breath;
         // Generate nonlinear throat harmonics only from the 240Hz..3.1kHz band.
         // Fundamental and high consonant detail bypass the saturation branch.
         const float drive=mid*2.2f;
         const float softSat=std::tanh(drive) * .455f;
-        const float raspHarmonics=(softSat-mid)*.34f*gate;
+        const float raspHarmonics=(softSat-mid)*.34f*bodyGate;
+        c.raspFiltered+=raspPole*(raspHarmonics-c.raspFiltered);
         c.creak += texturePole*(std::abs(mid)-c.creak);
         const float creak=std::clamp(c.creak*5.5f,0.f,1.f);
-        const float rasp=x+raspHarmonics+breath*.38f;
+        const float rasp=x+c.raspFiltered+breath*.38f;
         // Extra low-frequency crackle is voice-locked, not an always-on oscillator.
-        const float gritHarmonics=(std::tanh(mid*4.f)*.245f-mid)*.65f*gate;
-        const float gritty=x+gritHarmonics + mid*(creak*.11f*gate)
+        const float gritHarmonics=(std::tanh(mid*4.f)*.245f-mid)*.65f*bodyGate;
+        c.gritFiltered+=raspPole*(gritHarmonics-c.gritFiltered);
+        const float gritty=x+c.gritFiltered + mid*(creak*.11f*bodyGate)
                         + breath*.85f + noise*gate*std::min(.032f,c.env*.095f);
         const float y=w[0]*x+w[1]*airy+w[2]*rasp+w[3]*gritty;
         // Soft bounded output; do not clip clean or quiet source at zero amount.
@@ -82,7 +96,7 @@ private:
     }
     std::array<Channel,2> state {};
     double envelopeAttack=.99,envelopeRelease=.999;
-    float lowPole=.04f,highPole=.31f,texturePole=.004f,macroPole=.0004f;
+    float lowPole=.04f,highPole=.31f,texturePole=.004f,macroPole=.0004f,raspPole=.25f,sibilancePole=.005f;
     float macro=0.f,target=0.f;
     std::uint32_t rng=0x42fe209bu;
 };

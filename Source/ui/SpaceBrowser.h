@@ -66,7 +66,11 @@ private:
             g.drawImage(covers[static_cast<std::size_t>(id)],0,0,w,h,0,0,480,200);
             g.setColour(juce::Colours::black.withAlpha(.50f));g.fillRect(0,0,w,h);
         } else { g.fillAll(Theme::panelRaised); }
-        if(selected){g.setColour(Theme::green);g.drawRect(0,0,w,h,2);}
+        if(selected){
+            g.setColour(Theme::green.withAlpha(.14f));g.fillRect(0,0,w,h);
+            g.setColour(Theme::green);g.fillRect(0,0,3,h);
+            g.drawRect(0,0,w,h,1);
+        }
         g.setColour(Theme::bone);g.setFont(titleFont(13.5f));
         g.drawFittedText(spec.name,12,8,w-20,23,juce::Justification::centredLeft,1);
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(11.4f)));
@@ -86,6 +90,10 @@ private:
             if (category==3 && s.category!=Category::Indoor)continue;
             if (!juce::String(s.name).toLowerCase().contains(term) && !juce::String(s.description).toLowerCase().contains(term))continue;
             filtered.push_back(i);
+        }
+        for(int i=0;i<4;++i){
+            tabs[i].setColour(juce::TextButton::buttonColourId,i==category?Theme::greenDim.brighter(.35f):Theme::panelRaised);
+            tabs[i].setColour(juce::TextButton::textColourOffId,i==category?Theme::greenLight:Theme::bone);
         }
         list.updateContent();list.repaint();
     }

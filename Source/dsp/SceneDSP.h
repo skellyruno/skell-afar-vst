@@ -57,6 +57,9 @@ public:
         limiter.prepare(sr, channels, quality==0 ? skellcore::TruePeakLimiter::Quality::Economy
                                                    : skellcore::TruePeakLimiter::Quality::Standard);
         limiter.setCeilingDb(-1.f);
+        controlPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.0012)));
+        echoPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.006)));
+        dripDecay=static_cast<float>(std::exp(-1.0/(sr*.040)));
         reset();
     }
     void reset() noexcept {
@@ -65,6 +68,14 @@ public:
         diffuse.reset(); limiter.reset(); throat.reset();
         sourceLow = {}; directLow = {}; micLow = {}; micHigh = {}; ambienceLow = {};
         voiceEnv=0.f; noiseState=currentSeed; sampleIndex=0;sceneMorph=1.f;
+        sourceGainSmoothed=outputGainSmoothed=sourceGainTarget=outputGainTarget=1.f;
+        ambientGainSmoothed=ambientGainTarget=0.f;
+        cutoffAlphaSmoothed=cutoffAlphaTarget=.75f;
+        micAlphaSmoothed=micAlphaTarget=.7f;
+        earlyGainSmoothed=earlyGainTarget=0.f;
+        echoTapSmoothed={0.f,0.f,0.f};echoTapTargets=echoTapSmoothed;
+        lastDrr=lastDrrTarget=0.f;
+        dripPhase=dripLevel=0.f;
     }
     int latencySamples() const noexcept { return limiter.latencySamples(); }
     void setScene(int id) noexcept {
@@ -103,7 +114,50 @@ public:
         const float recorded = recordedEffort(p.recordedAs);
         const float difference = std::clamp(p.effort - recorded, -1.f, 1.f);
         const float gainDb = std::clamp((effortSpl(p.effort) - effortSpl(recorded)) * .42f, -16.f, 16.f);
-        const float sourceGain = dbGain(gainDb);
+        // Update expensive scene/acoustic coefficients at control rate. A small
+        // one-pole smoothing stage below prevents zipper noise at the 32-sample
+        // boundaries, even during continuous walk automation.
+        const bool update=(sampleIndex % 32U)==0U;
+        if(update) {
+            sourceGainTarget=dbGain(gainDb);
+            outputGainTarget=dbGain(p.outputDb);
+            ambientGainTarget=p.muteAmbience || p.ambienceDb<=-59.9f ? 0.f
+                : dbGain(p.ambienceDb)*.02f*std::clamp(p.bedGain,0.f,4.f);
+            const float face=std::clamp(p.angle/180.f,0.f,1.f);
+            const float weather=1.f + std::clamp((20.f-p.temperature)*.006f,-.15f,.15f)
+                                      + std::clamp((50.f-p.humidity)*.003f,-.15f,.15f);
+            const float typeCut[] {19000.f,10500.f,3500.f,1600.f,4900.f,1100.f};
+            const int occlusionType=std::clamp(p.occlusionType,0,5);
+            const float obstruction=std::clamp(p.occlusion,0.f,1.f);
+            const float highCut=std::min(
+                std::clamp(space.upperRollOffHz*std::exp(-p.distance*.013f*p.absorption*weather),260.f,19000.f)*(1.f-face*.72f),
+                19000.f+(typeCut[occlusionType]-19000.f)*obstruction);
+            cutoffAlphaTarget=std::clamp(1.f-std::exp(-2.f*pi*highCut/static_cast<float>(sr)),0.f,1.f);
+            const float micCut[] {3300.f,14500.f,10000.f,15500.f,18500.f,3900.f,2800.f,19000.f};
+            micAlphaTarget=std::clamp(1.f-std::exp(-2.f*pi*micCut[std::clamp(p.micType,0,7)]/static_cast<float>(sr)),0.f,1.f);
+            const float firstEcho=std::max(1.f,space.firstEchoMeters*std::clamp(p.size,.5f,2.f))*2.f/speedOfSound*static_cast<float>(sr);
+            echoTapTargets[0]=std::clamp(firstEcho,1.f,static_cast<float>(sr*3.0));
+            echoTapTargets[1]=std::clamp(firstEcho*1.61f+space.widthMeters*2.f/speedOfSound*static_cast<float>(sr),1.f,static_cast<float>(sr*3.1));
+            echoTapTargets[2]=std::clamp(firstEcho*2.19f+space.lengthMeters/speedOfSound*static_cast<float>(sr),1.f,static_cast<float>(sr*3.2));
+            const float echoDistance=space.firstEchoMeters+std::max(0.f,p.distance);
+            const float echoSpl=effortSpl(p.effort)-20.f*std::log10(std::max(1.f,echoDistance));
+            const float gate=std::clamp((echoSpl-24.f)/18.f,0.f,1.f);
+            earlyGainTarget=space.reflectionGain*gate*std::sqrt(std::clamp(p.size,.5f,2.f));
+            lastDrrTarget=directReverbDb(space,p.distance);
+            // Most expensive SkellCore coefficient update: only once per 32 frames.
+            diffuse.setParameters(space.rt60Seconds*p.size,space.isOpen ? .71f:.48f,1.f);
+        }
+        sourceGainSmoothed+=controlPole*(sourceGainTarget-sourceGainSmoothed);
+        outputGainSmoothed+=controlPole*(outputGainTarget-outputGainSmoothed);
+        ambientGainSmoothed+=controlPole*(ambientGainTarget-ambientGainSmoothed);
+        cutoffAlphaSmoothed+=controlPole*(cutoffAlphaTarget-cutoffAlphaSmoothed);
+        micAlphaSmoothed+=controlPole*(micAlphaTarget-micAlphaSmoothed);
+        earlyGainSmoothed+=controlPole*(earlyGainTarget-earlyGainSmoothed);
+        // Fractional reflection delays are smoothly moved instead of snapping
+        // by up to a control block when SIZE/SPACE is automated.
+        for(std::size_t k=0;k<echoTapSmoothed.size();++k)
+            echoTapSmoothed[k]+=echoPole*(echoTapTargets[k]-echoTapSmoothed[k]);
+        lastDrr+=.02f*(lastDrrTarget-lastDrr);
         voiceEnv=.997f*voiceEnv+.003f*std::abs(source);
         const float tiltAlpha = std::clamp(1500.f/static_cast<float>(sr),.001f,.7f);
         sourceLow[0] += tiltAlpha*(source-sourceLow[0]);
@@ -119,25 +173,17 @@ public:
                 shaped=std::tanh((source + hp*.24f*shout)*(1.f + shout*1.5f)) / (1.f+.4f*shout);
             }
         }
-        shaped=sanitize(shaped*sourceGain);
+        shaped=sanitize(shaped*sourceGainSmoothed);
         // Directivity and occlusion: level loss + gentle low-pass. No phase-reset jumps.
         const float facing=std::clamp(p.angle/180.f,0.f,1.f);
-        const float weather=1.f + std::clamp((20.f-p.temperature)*.006f, -.15f,.15f)
-                                + std::clamp((50.f-p.humidity)*.003f,-.15f,.15f);
-        float highCut=std::clamp(space.upperRollOffHz * std::exp(-p.distance*.013f*p.absorption*weather), 260.f, 19000.f);
-        highCut*=1.f - facing*.72f;
         const float obstruction=std::clamp(p.occlusion,0.f,1.f);
-        const float typeCut[] {19000.f,10500.f,3500.f,1600.f,4900.f,1100.f};
         const int type=std::clamp(p.occlusionType,0,5);
-        highCut=std::min(highCut, 19000.f + (typeCut[type]-19000.f)*obstruction);
-        const float alpha=std::clamp(1.f-std::exp(-2.f*pi*highCut/static_cast<float>(sr)),0.f,1.f);
+        const float alpha=cutoffAlphaSmoothed;
         const float wallGain=1.f-obstruction*(type==2 ? .62f : type==3 ? .86f : .40f);
         const float directionGain=1.f-facing*.30f;
         const float directGain=geometricDirectGain(p.distance)*directionGain*wallGain;
         const float tof = p.removeDelay ? 0.f : p.distance * static_cast<float>(sr) / speedOfSound;
-        // Ambient early reflections and diffuse late field are NOT subject to direct-path 1/r attenuation.
-        const float echoScale = p.size;
-        const float initialEcho = std::max(1.f, space.firstEchoMeters*echoScale) * 2.f / speedOfSound * static_cast<float>(sr);
+        // Reflections and diffuse field remain independent of the direct 1/r loss.
         float early[2] {};
         float nearSignal[2] {};
         const float in[2] {textured.left, channels == 2 ? textured.right : textured.left};
@@ -151,18 +197,12 @@ public:
             nearSignal[c]=sanitize(d);
             // 3 sparse scene taps. Distance of reflection objects, not the source distance.
             // Canyon tap is intentionally very late, box-room taps follow dimensions.
-            const float t0=std::clamp(initialEcho,1.f,static_cast<float>(sr*3.0));
-            const float t1=std::clamp(t0*1.61f+space.widthMeters*2.f/speedOfSound*static_cast<float>(sr), 1.f,static_cast<float>(sr*3.1));
-            const float t2=std::clamp(t0*2.19f+space.lengthMeters/speedOfSound*static_cast<float>(sr), 1.f,static_cast<float>(sr*3.2));
-            const float echoDistance=space.firstEchoMeters+std::max(0.f,p.distance);
-            const float echoSpl=effortSpl(p.effort)-20.f*std::log10(std::max(1.f,echoDistance));
-            const float gate = std::clamp((echoSpl-24.f)/18.f,0.f,1.f);
-            const float eGain = space.reflectionGain * gate * std::sqrt(std::clamp(p.size,.5f,2.f));
-            early[c]=(reflections[c].tap(t0)*.55f + reflections[c].tap(t1)*.28f + reflections[c].tap(t2)*.17f)*eGain;
+            early[c]=(reflections[c].tap(echoTapSmoothed[0])*.55f
+                + reflections[c].tap(echoTapSmoothed[1])*.28f
+                + reflections[c].tap(echoTapSmoothed[2])*.17f)*earlyGainSmoothed;
             direct[c].advance(); reflections[c].advance();
         }
         // Shared 4-line SkellCore FDN, used as the first live diffusion stage.
-        diffuse.setParameters(space.rt60Seconds * p.size, space.isOpen ? .71f : .48f, 1.f);
         const auto late = diffuse.processFrame(shaped, shaped);
         const float ambient=makeAmbience(space.ambience,p);
         const float lateGain = space.diffuseGain * (space.isOpen ? .48f: 1.f);
@@ -178,10 +218,8 @@ public:
         float output[2] {mid+side,mid-side};
         for (int c=0;c<channels;++c) {
             // Device coloration as one-pole response and input-stage soft clip.
-            const float micCut[] {3300,14500,10000,15500,18500,3900,2800,19000};
             const int mic=std::clamp(p.micType,0,7);
-            const float a=std::clamp(1.f-std::exp(-2.f*pi*micCut[mic]/static_cast<float>(sr)),0.f,1.f);
-            micLow[c] += a*(output[c]-micLow[c]);
+            micLow[c] += micAlphaSmoothed*(output[c]-micLow[c]);
             output[c]=micLow[c];
             if (mic==0 || mic==5 || mic==6) output[c]=std::tanh(output[c]*1.15f);
             const float clean=c==0 ? input.left:input.right;
@@ -189,12 +227,11 @@ public:
             const float active=clean+(output[c]-clean)*std::clamp(wetAmount,0.f,1.f);
             output[c]=active+(clean-active)*std::clamp(bypassAmount,0.f,1.f);
             if(p.delta) output[c]-=clean;
-            output[c]=sanitize(output[c]*dbGain(p.outputDb));
+            output[c]=sanitize(output[c]*outputGainSmoothed);
         }
         float limited[2] {};
         limiter.processFrame(output,limited,channels);
         lastPeak=std::max(lastPeak,std::max(std::abs(limited[0]),std::abs(limited[channels-1])));
-        lastDrr=directReverbDb(space,p.distance);
         const float clear=std::clamp((lastDrr+22.f)/45.f - std::abs(ambient)*3.f, 0.f,1.f);
         lastClarity=lastClarity*.995f+clear*.005f;
         ++sampleIndex;
@@ -206,7 +243,8 @@ private:
         return static_cast<float>((noiseState>>8) * (2.0/16777216.0) - 1.0);
     }
     float makeAmbience(AmbienceKind kind,const SceneControls& p) noexcept {
-        if (p.muteAmbience || p.ambienceDb <= -59.9f) return 0.f;
+        // Even when muted keep RNG advancing: repeatable renders and a smooth
+        // AMBIENCE/MUTE ramp from the cached scene-gain coefficient.
         float n=nextNoise();
         const float coeff=kind==AmbienceKind::Water ? .10f : kind==AmbienceKind::Room ? .015f : .004f;
         ambienceLow[0] += coeff*(n-ambienceLow[0]);
@@ -214,7 +252,24 @@ private:
         const float hiss=n*.35f;
         float bed=0.f;
         switch(kind) {
-            case AmbienceKind::Water: bed=wind*.7f+hiss*.1f; break;
+            case AmbienceKind::Water: {
+                // Short procedural drip transients; no samples or IRs required.
+                // Trigger by deterministic PRNG bits (roughly 1.5/s at 48 kHz),
+                // then ring a decaying resonator with a bounded tail.
+                if((noiseState & 0x7fffu)==0 && dripLevel<.004f) {
+                    dripLevel=.22f;dripPhase=0.f;
+                    dripHz=(noiseState & 0x10000u) ? 1517.f:1129.f;
+                }
+                float drip=0.f;
+                if(dripLevel>1.e-5f) {
+                    dripPhase+=2.f*pi*dripHz/static_cast<float>(sr);
+                    if(dripPhase>2.f*pi)dripPhase-=2.f*pi;
+                    drip=std::sin(dripPhase)*dripLevel;
+                    dripLevel*=dripDecay;
+                }
+                bed=wind*.7f+hiss*.1f+drip;
+                break;
+            }
             case AmbienceKind::Forest: bed=wind*.45f+hiss*.08f; break;
             case AmbienceKind::Insects: bed=hiss*.1f+std::sin(2.f*pi*720.f*static_cast<float>(sampleIndex%static_cast<uint64_t>(sr))/static_cast<float>(sr))*.01f; break;
             case AmbienceKind::Traffic: bed=wind*.95f; break;
@@ -222,7 +277,7 @@ private:
             case AmbienceKind::Room: bed=hiss*.08f+wind*.13f; break;
             case AmbienceKind::Wind: bed=wind*.7f; break;
         }
-        const float gain=dbGain(p.ambienceDb)*.02f*std::clamp(p.bedGain,0.f,4.f);
+        const float gain=ambientGainSmoothed;
         const float duck=p.ambienceDuck ? 1.f-.45f*std::clamp(voiceEnv*6.f,0.f,1.f) : 1.f;
         return sanitize(bed*gain*duck);
     }
@@ -236,5 +291,14 @@ private:
     std::uint64_t sampleIndex=0;
     int previousScene=5;float sceneMorph=1.f;
     float voiceEnv=0.f, lastPeak=0.f, lastDrr=0.f, lastClarity=1.f;
+    float sourceGainTarget=1.f,sourceGainSmoothed=1.f;
+    float outputGainTarget=1.f,outputGainSmoothed=1.f;
+    float ambientGainTarget=0.f,ambientGainSmoothed=0.f;
+    float cutoffAlphaTarget=.75f,cutoffAlphaSmoothed=.75f;
+    float micAlphaTarget=.7f,micAlphaSmoothed=.7f;
+    float earlyGainTarget=0.f,earlyGainSmoothed=0.f,lastDrrTarget=0.f;
+    std::array<float,3> echoTapTargets{},echoTapSmoothed{};
+    float controlPole=.017f,echoPole=.003f,dripDecay=.9995f;
+    float dripPhase=0.f,dripLevel=0.f,dripHz=1200.f;
 };
 } // namespace afar

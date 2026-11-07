@@ -169,7 +169,10 @@ void SkellAfarAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce
     }
     if (!hostPosition) walkBeat+=static_cast<double>(n)/samplesPerBeat;
     else walkBeat=beats+static_cast<double>(n)/samplesPerBeat;
-    meterPeak.store(peak,std::memory_order_relaxed);
+    // Simple peak ballistics: retain short peaks yet decay between blocks.
+    const float previousPeak=meterPeak.load(std::memory_order_relaxed);
+    const float decay=std::exp(-static_cast<float>(n)/(static_cast<float>(std::max(1.0,sampleRateHz))*.22f));
+    meterPeak.store(std::max(peak,previousPeak*decay),std::memory_order_relaxed);
     meterClarity.store(engine.intelligibility(),std::memory_order_relaxed);
     meterDrr.store(engine.directReverb(),std::memory_order_relaxed);
     meterDistance.store(s.distance,std::memory_order_relaxed);

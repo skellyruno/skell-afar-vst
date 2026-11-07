@@ -51,15 +51,24 @@ public:
         }
         const float d=processor.meterDistance.load(std::memory_order_relaxed);
         const float x=drawArea.getX()+drawArea.getWidth()*(1.f-distanceNormalized(d));
-        const float y=drawArea.getCentreY();
+        const float facing=std::clamp(processor.parameters.getRawParameterValue("angle")->load()/180.f,0.f,1.f);
+        const float y=drawArea.getY()+drawArea.getHeight()*(.20f+.60f*facing);
         const auto level=processor.meterPeak.load(std::memory_order_relaxed);
         g.setColour(Theme::green.withAlpha(.07f+.10f*level));
-        for(int i=1;i<=3;++i)g.drawEllipse(x-i*18.f,y-i*18.f,i*36.f,i*36.f,1.f);
+        for(int i=0;i<3;++i) {
+            const float progress=std::fmod(pulsePhase+static_cast<float>(i)/3.f,1.f);
+            const float rr=10.f+progress*78.f;
+            g.setColour(Theme::green.withAlpha((.17f+.15f*level)*(1.f-progress)));
+            g.drawEllipse(x-rr,y-rr,rr*2.f,rr*2.f,1.f);
+        }
         g.setColour(Theme::green.withAlpha(.14f));g.drawLine(x,y,drawArea.getRight()-20,y,1.5f);
         g.setColour(Theme::greenLight);g.fillEllipse(x-6,y-6,12,12);
         const float micX=drawArea.getRight()-20;
         g.setColour(Theme::bone);g.fillRoundedRectangle(micX-6,y-12,12,24,3);
         g.drawLine(micX,y+13,micX,y+20,1.5f);
+        // Small visual accent: this is a model display, not a calibrated ray trace.
+        g.setColour(Theme::ice.withAlpha(.20f));
+        g.drawLine(x,y,drawArea.getRight()-20.f,y,1.f);
         g.setColour(Theme::bone);g.setFont(titleFont(16.f));
         g.drawText(juce::String(s.name).toUpperCase(),15,10,getWidth()-30,21,juce::Justification::centredLeft);
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(11.f)));
@@ -69,20 +78,29 @@ public:
         g.setColour(Theme::bone);g.drawFittedText(status,16,getHeight()-34,getWidth()-32,23,juce::Justification::centredLeft,1);
     }
     void mouseDown(const juce::MouseEvent& e) override {
-        if(auto* p=processor.parameters.getParameter("distance"))p->beginChangeGesture();
+        for(auto* id:{"distance","angle"})
+            if(auto* p=processor.parameters.getParameter(id))p->beginChangeGesture();
         drag(e);
     }
     void mouseDrag(const juce::MouseEvent& e) override {drag(e);}
     void mouseUp(const juce::MouseEvent&) override {
-        if(auto* p=processor.parameters.getParameter("distance"))p->endChangeGesture();
+        for(auto* id:{"distance","angle"})
+            if(auto* p=processor.parameters.getParameter(id))p->endChangeGesture();
     }
 private:
     void drag(const juce::MouseEvent& e) {
         const float nx=std::clamp((static_cast<float>(e.x)-13.f)/std::max(1.f,static_cast<float>(getWidth())-26.f),0.f,1.f);
         if(auto* p=processor.parameters.getParameter("distance"))
             p->setValueNotifyingHost(p->convertTo0to1(distanceMeters(1.f-nx)));
+        const float ny=std::clamp((static_cast<float>(e.y)-39.f)/std::max(1.f,static_cast<float>(getHeight())-78.f),0.f,1.f);
+        if(auto* p=processor.parameters.getParameter("angle"))
+            p->setValueNotifyingHost(p->convertTo0to1(std::clamp((ny-.20f)/.60f,0.f,1.f)*180.f));
     }
-    void timerCallback() override {repaint();}
+    void timerCallback() override {
+        pulsePhase=std::fmod(pulsePhase+.016f+.025f*processor.meterEffort.load(std::memory_order_relaxed),1.f);
+        repaint();
+    }
     SkellAfarAudioProcessor& processor;
+    float pulsePhase=0.f;
 };
 }

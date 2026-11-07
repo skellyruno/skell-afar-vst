@@ -64,10 +64,11 @@ public:
             addAndMakeVisible(*slider);
         }
         attach(effort,"effort");attach(distance,"distance");
+        throatTexture.setComponentID("throatTexture");
         throatTexture.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         throatTexture.setTextBoxStyle(juce::Slider::TextBoxBelow,false,62,17);
         throatTexture.setDoubleClickReturnValue(true,0.0);
-        throatTexture.setTooltip("ONE MACRO: Clean > Airy > Raspy > Gritty. Adjusts source texture before space and microphone effects.");
+        throatTexture.setTooltip("CLEAN 0% | AIRY 33% | RASPY 67% | GRITTY 100%. Morphs source-domain texture before propagation and room effects.");
         addAndMakeVisible(throatTexture);
         attach(throatTexture,"throatTexture");
         const char* ids[]={"angle","occlusionAmount","size","ambience","presenceHold","width","mix","output"};
@@ -109,11 +110,16 @@ public:
             juce::PopupMenu m;
             m.addItem(1,"Small · 75%");m.addItem(2,"Medium · 100%");
             m.addItem(3,"Large · 125%");m.addItem(4,"XL · 150%");
-            m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settings),[this, safe=juce::Component::SafePointer<Surface>(this)](int choice){
-                if(!safe)return;
-                const float factors[]{.75f,1.f,1.25f,1.5f};
-                if(choice>=1 && choice<=4)onScale(factors[choice-1]);
-            });
+            // Never capture `this` inside a nested lambda initializer: MSVC binds
+            // that `this` to the outer closure, rather than to Surface.
+            const juce::Component::SafePointer<Surface> safeView(this);
+            m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settings),
+                [safeView](int choice) {
+                    if (auto* view=safeView.getComponent()) {
+                        constexpr float factors[]{.75f,1.f,1.25f,1.5f};
+                        if(choice>=1 && choice<=4) view->onScale(factors[choice-1]);
+                    }
+                });
         };
         save.setButtonText("SAVE");addAndMakeVisible(save);
         save.onClick=[this]{saveCurrentPreset();};
@@ -139,6 +145,9 @@ public:
         if(bg.isValid())g.drawImageAt(bg,0,0);
         g.setColour(Theme::panelRaised);g.fillRect(0,0,getWidth(),Theme::topBar);
         g.setColour(Theme::greenDim);g.drawHorizontalLine(Theme::topBar,0.f,static_cast<float>(getWidth()));
+        g.setColour(Theme::green.withAlpha(.72f));
+        g.fillRoundedRectangle(318.f,54.f,474.f,2.f,1.f);
+        g.fillRoundedRectangle(825.f,54.f,247.f,2.f,1.f);
         if(logo.isValid())g.drawImage(logo,53,5,47,47,0,0,96,96);
         g.setColour(Theme::greenLight);g.setFont(titleFont(21.f));
         g.drawText("SKELL-AFAR",111,7,264,29,juce::Justification::centredLeft);
@@ -183,6 +192,14 @@ public:
         g.drawText("THROAT TEXTURE",320,578,90,13,juce::Justification::centred);
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(9.f)));
         g.drawText(textureStage,329,673,71,13,juce::Justification::centred);
+        // The macro's four landmarks are intentionally printed on the control,
+        // rather than adding four more knobs to a crowded bottom strip.
+        const float trackX=328.f,trackY=585.f,trackW=70.f;
+        const juce::Colour stages[]{Theme::bone,Theme::ice,Theme::greenLight,Theme::fire};
+        for(int i=0;i<4;++i){
+            g.setColour(stages[i].withAlpha(i==std::min(3,static_cast<int>(texture*3.99f))?1.f:.36f));
+            g.fillRoundedRectangle(trackX+i*trackW/4.f,trackY,trackW/4.f-2.f,2.5f,1.2f);
+        }
     }
     void resized() override {
         browser.setBounds(afar::ui::Theme::browserX,afar::ui::Theme::browserY,afar::ui::Theme::browserW,afar::ui::Theme::browserH);
