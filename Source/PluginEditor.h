@@ -1,14 +1,19 @@
 #pragma once
 #include <JuceHeader.h>
+#include <memory>
 #include "PluginProcessor.h"
-class SkellAudioProcessorEditor final : public juce::AudioProcessorEditor {
+#include "ui/Controls.h"
+#include "ui/SpaceBrowser.h"
+#include "ui/SceneView.h"
+
+class SkellAfarAudioProcessorEditor final : public juce::AudioProcessorEditor {
 public:
-  explicit SkellAudioProcessorEditor(SkellAudioProcessor&);
-  void paint(juce::Graphics&) override;
-  void resized() override;
+    explicit SkellAfarAudioProcessorEditor(SkellAfarAudioProcessor&);
+    ~SkellAfarAudioProcessorEditor() override;
+    void resized() override;
 private:
-  juce::Slider gain;
-  juce::Label title;
-  juce::AudioProcessorValueTreeState::SliderAttachment gainAttachment;
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAudioProcessorEditor)
+    class Surface;
+    SkellAfarAudioProcessor& processor;
+    std::unique_ptr<Surface> surface;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAfarAudioProcessorEditor)
 };

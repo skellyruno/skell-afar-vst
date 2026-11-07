@@ -1,0 +1,96 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Subway Platform",
+  "category": "underground",
+  "geometry": {
+    "type": "vaulted hall",
+    "dimensionsMeters": {
+      "width": 12,
+      "length": 140,
+      "height": 6
+    },
+    "openness": false
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    }
+  ],
+  "scattering": 0.28,
+  "rt60TargetSeconds": 3.0,
+  "reflectionLevel": 0.26,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 18,
+      "gain": 0.26,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": false,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "traffic",
+      "levelDb": -25,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "rumble",
+    "tile reflections"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.1)"
+}

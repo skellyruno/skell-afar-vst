@@ -1,0 +1,96 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Cellar Bunker",
+  "category": "underground",
+  "geometry": {
+    "type": "box",
+    "dimensionsMeters": {
+      "width": 5,
+      "length": 8,
+      "height": 2.5
+    },
+    "openness": false
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    }
+  ],
+  "scattering": 0.15,
+  "rt60TargetSeconds": 0.55,
+  "reflectionLevel": 0.13,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 4,
+      "gain": 0.13,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": false,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "drone",
+      "levelDb": -25,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "hum",
+    "dry"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.1)"
+}

@@ -1,28 +1,42 @@
 #pragma once
 #include <JuceHeader.h>
-class SkellAudioProcessor final : public juce::AudioProcessor {
+#include <array>
+#include <atomic>
+#include "dsp/SceneDSP.h"
+
+class SkellAfarAudioProcessor final : public juce::AudioProcessor {
 public:
-  SkellAudioProcessor();
-  void prepareToPlay(double, int) override {}
-  void releaseResources() override {}
-  bool isBusesLayoutSupported(const BusesLayout& l) const override;
-  void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-  juce::AudioProcessorEditor* createEditor() override;
-  bool hasEditor() const override { return true; }
-  const juce::String getName() const override { return "Skell Quickstart"; }
-  bool acceptsMidi() const override { return false; }
-  bool producesMidi() const override { return false; }
-  bool isMidiEffect() const override { return false; }
-  double getTailLengthSeconds() const override { return 0.0; }
-  int getNumPrograms() override { return 1; }
-  int getCurrentProgram() override { return 0; }
-  void setCurrentProgram(int) override {}
-  const juce::String getProgramName(int) override { return {}; }
-  void changeProgramName(int, const juce::String&) override {}
-  void getStateInformation(juce::MemoryBlock&) override;
-  void setStateInformation(const void*, int) override;
-  juce::AudioProcessorValueTreeState parameters;
-  static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    SkellAfarAudioProcessor();
+    ~SkellAfarAudioProcessor() override = default;
+    void prepareToPlay(double sampleRate,int samplesPerBlock) override;
+    void releaseResources() override {}
+    bool isBusesLayoutSupported(const BusesLayout&) const override;
+    void processBlock(juce::AudioBuffer<float>&,juce::MidiBuffer&) override;
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override {return true;}
+    const juce::String getName() const override {return "Skell-Afar";}
+    bool acceptsMidi() const override {return false;}
+    bool producesMidi() const override {return false;}
+    bool isMidiEffect() const override {return false;}
+    double getTailLengthSeconds() const override {return 7.0;}
+    int getNumPrograms() override {return 1;}
+    int getCurrentProgram() override {return 0;}
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override {return {};}
+    void changeProgramName(int,const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override;
+    void setStateInformation(const void*,int) override;
+    static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    juce::AudioProcessorValueTreeState parameters;
+    // Non-automatable editor state and future custom scene documents.
+    juce::ValueTree editorState {"EditorState"};
+    std::atomic<float> meterPeak {0.f}, meterClarity {0.8f}, meterDrr {0.f};
+    std::atomic<float> meterDistance {3.f}, meterEffort {.5f};
 private:
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAudioProcessor)
+    float get(const char* key) const noexcept { return parameters.getRawParameterValue(key)->load(); }
+    afar::SceneDSP engine;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> effortSmooth, distanceSmooth, mixSmooth, bypassSmooth;
+    double sampleRateHz=48000.,walkBeat=0.;
+    int lastScene=-1;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAfarAudioProcessor)
 };

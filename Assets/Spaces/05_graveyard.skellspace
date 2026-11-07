@@ -1,0 +1,97 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Graveyard",
+  "category": "outdoor",
+  "geometry": {
+    "type": "open area",
+    "dimensionsMeters": {
+      "width": 55,
+      "length": 110,
+      "height": 100
+    },
+    "openness": true
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "ground",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "ground",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "ground",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "ground",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    }
+  ],
+  "scattering": 0.2,
+  "rt60TargetSeconds": 0.3,
+  "reflectionLevel": 0.16,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 22,
+      "gain": 0.16,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": false,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "insects",
+      "levelDb": -25,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "headstones",
+    "crickets",
+    "wind"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.1)"
+}

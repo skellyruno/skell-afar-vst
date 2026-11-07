@@ -1,0 +1,97 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Sewer",
+  "category": "underground",
+  "geometry": {
+    "type": "pipe",
+    "dimensionsMeters": {
+      "width": 2,
+      "length": 55,
+      "height": 2
+    },
+    "openness": false
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "stone",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.12,
+        0.14,
+        0.18,
+        0.24,
+        0.33,
+        0.46
+      ]
+    }
+  ],
+  "scattering": 0.18,
+  "rt60TargetSeconds": 2.1,
+  "reflectionLevel": 0.3,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 4,
+      "gain": 0.3,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": true,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "water",
+      "levelDb": -25,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "drips",
+    "water",
+    "pipe resonance"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.1)"
+}

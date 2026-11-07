@@ -1,0 +1,9 @@
+/build/
+/build-*/
+/.vs/
+/.idea/
+.DS_Store
+*.user
+*.suo
+*.obj
+*.pdb
