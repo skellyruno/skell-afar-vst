@@ -22,8 +22,17 @@ inline constexpr int walkX=820,walkY=346,walkW=260,walkH=215;
 inline constexpr int lowerX=314,lowerY=575,lowerW=774,lowerH=115;
 }
 inline void panel(juce::Graphics& g,juce::Rectangle<float> r,float corner=10.f) {
-    g.setColour(Theme::panel);g.fillRoundedRectangle(r,corner);
-    g.setColour(Theme::greenDim.withAlpha(.72f));g.drawRoundedRectangle(r,corner,1.1f);
+    juce::ColourGradient fill(juce::Colour(0xff182024),r.getX(),r.getY(),Theme::panel.darker(.3f),r.getX(),r.getBottom(),false);
+    g.setGradientFill(fill);g.fillRoundedRectangle(r,corner);
+    g.setColour(juce::Colours::white.withAlpha(.04f));
+    g.drawHorizontalLine(juce::roundToInt(r.getY())+1,r.getX()+corner,r.getRight()-corner);
+    g.setColour(Theme::greenDim.withAlpha(.72f));g.drawRoundedRectangle(r.reduced(.5f),corner,1.1f);
 }
 inline juce::Font titleFont(float size) {return juce::Font(juce::FontOptions(size).withStyle("Bold"));}
+// Consistent section heading: neon accent bar + bold bone-white caps.
+inline void sectionTitle(juce::Graphics& g,const juce::String& text,float x,float y,float w,float size=13.f) {
+    g.setColour(Theme::green);g.fillRoundedRectangle(x,y+3.f,3.f,size,1.5f);
+    g.setColour(Theme::bone);g.setFont(titleFont(size));
+    g.drawText(text,x+10.f,y,w-10.f,size+6.f,juce::Justification::centredLeft);
+}
 }

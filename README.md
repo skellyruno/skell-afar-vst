@@ -1,8 +1,8 @@
 # Skell-Afar — FEEL THE DISTANCE
 
-**Skell-Afar v0.3 source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 15 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
+**Skell-Afar v0.4.0 development source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 15 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
 
-**Status: source prototype.** The previous v0.2 GitHub Windows VST3 build failed in the settings-menu callback (`SafePointer` nested lambda capture); this source revision fixes that MSVC error. All four local headless C++ tests pass; the scene smoke/stress tests use a clearly labeled SkellCore stand-in. A **new v0.3 Windows VST3 and standalone build is required** before declaring build compatibility. Do not treat it as an industry-ready or physically validated acoustic simulator. No external recordings or impulse responses are included.
+**Status: source prototype.** The earlier v0.3 passed Windows (MSVC) and macOS (AppleClang) CI builds with 4/4 headless tests (CI run 2026-11-07). The v0.4.0 package passes all five local headless C++ tests and its project-integrity check; fresh Windows/macOS full plugin builds are still required. The scene smoke/stress tests use a clearly labeled SkellCore stand-in. FL Studio runtime behaviour, subjective audio quality and CPU cost are **not yet verified**. Do not treat it as an industry-ready or physically validated acoustic simulator. No external recordings or impulse responses are included.
 
 ## What works in v0.2
 
@@ -17,7 +17,7 @@
 - Tempo-following Walk presets (Approach / Retreat / Pass By / Pacing / Run Away), with 120 BPM fallback. Physical time-of-flight Doppler is only present when arrival delay is enabled; there is not a separate validated Doppler pitch model.
 - SkellCore `TruePeakLimiter` as the final stage, at -1 dBFS ceiling. It uses intersample interpolation but **is not BS.1770 certified**. Its reported latency is always active, including when bypassed. The bypass smoothly blends dry/wet over 10 ms *before* that limiter.
 - Original artwork created specifically for this project; static 1100×700 backdrop, skull logo, 16 abstract scene cards loaded via `juce_add_binary_data`.
-- 24 factory scene/effort presets; XML save to user app data folder; A/B editor swap, size 75/100/125/150%. v0.3 improves slider contrast, graduated meter/knob styling, active browser tabs, and the compact Throat Texture status readout.
+- 24 factory scene/effort presets; named user presets saved to the user app-data folder and listed in the preset menu (prev/next arrows); two-slot A/B state swap (not persisted), size 75/100/125/150%. v0.3 improves slider contrast, graduated meter/knob styling, active browser tabs, and the compact Throat Texture status readout.
 
 ## Not yet implemented (do not advertise as shipped)
 
@@ -83,7 +83,7 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 
 ## Identity
 
-`audio.skell.afar`, VST3 manufacturer code `SkAu`, plugin code `Afar`, version `0.3.0`. These IDs must stay stable once released. All generated artworks are original. There is no bundled proprietary font: the renderer uses locally available system fonts so no extra font rights are required.
+`audio.skell.afar`, VST3 manufacturer code `SkAu`, plugin code `Afar`, version `0.4.0`. These IDs must stay stable once released. All generated artworks are original. There is no bundled proprietary font: the renderer uses locally available system fonts so no extra font rights are required.
 
 ## Throat Texture QA notes (v0.3)
 
@@ -92,3 +92,18 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 - No heap allocation or mutexes in `ThroatTexture::process`. Macro changes use a ~25 ms one-pole smoother to prevent clicks. Algorithmic latency is zero for this module.
 - Headless tests: exact clean identity, silence gating, morph landmarks, finite output for 8k–192k sample rates, scene smoke plus v0.3 rapid-change/multi-rate/seed-determinism stress checks with a **test-only stub** (the real SkellCore links in shipping builds).
 - Pending validation: compare with real dry vocal recordings (singers/rappers), high-drive aliasing checks, FL Studio automation/restore testing, and listening checks at various input levels.
+
+## Changes since v0.3 (pending a fresh Windows/macOS CI run)
+
+**DSP**
+- Throat Texture: breath noise is band-shaped (was white), masked on loud peaks, saturation is first-order ADAA anti-aliased (~7 dB less aliasing, measured), RASPY/GRITTY get a jittered ~52 Hz glottal-pulse "fry" modulation of the harmonic drive only. Clean (0%) is still bit-exact.
+- Eight independent ambience beds (wind, water, drips, traffic, room, insects, forest, drone). Bed level -20 dB = AUTO (follows the scene); raise a bed to add it to any space; -60 dB = off. Beds are level-matched (~-22 dBFS rms at AMBIENCE 0 dB). **Behaviour change:** the old master scaling left ambience around -75 dBFS at default settings (effectively inaudible); presets will now be audibly more ambient.
+- Presence Hold is now a real band-restoring control (1.8-5.2 kHz restored on the direct path, more at distance, less on loud passages) instead of a broadband gain.
+
+**UI**
+- MORE panel exposing the 8 beds, air model, occlusion material, mic stereo pattern, Delta, Bypass Effort, Walk Sync/Scale, Duck, Seed and engine options. QUALITY/OVERSAMPLING are still reserved placeholders and are labelled as such.
+- Per-space vector backdrops, distance ruler, first-echo readout, tooltips (a TooltipWindow was missing, so tooltips never appeared), walk-path preview, effort word, LED meter, user presets with prev/next.
+
+**Tests** (headless, run in CI): physics, throat (incl. noise-shaping and ADAA regressions), audio smoke, stress, beds + presence hold. `tests/real_audio_throat.py` checks real recordings.
+
+**Still unverified for v0.4.0:** JUCE compile of the new UI, FL Studio behaviour, subjective sound, CPU benchmarks.

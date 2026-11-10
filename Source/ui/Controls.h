@@ -20,6 +20,65 @@ public:
         setColour(juce::TextButton::textColourOffId,Theme::bone);
         setColour(juce::ToggleButton::textColourId,Theme::bone);
         setColour(juce::Label::textColourId,Theme::bone);
+        setColour(juce::ScrollBar::thumbColourId,Theme::greenDim.brighter(.55f));
+        setColour(juce::ScrollBar::trackColourId,Theme::background);
+        setColour(juce::TextEditor::highlightColourId,Theme::greenDim);
+        setColour(juce::TextEditor::highlightedTextColourId,Theme::bone);
+        setColour(juce::TextEditor::focusedOutlineColourId,Theme::green);
+        setColour(juce::CaretComponent::caretColourId,Theme::green);
+        setColour(juce::ComboBox::arrowColourId,Theme::greenLight);
+        setColour(juce::ComboBox::focusedOutlineColourId,Theme::green);
+        setColour(juce::PopupMenu::highlightedBackgroundColourId,Theme::greenDim);
+        setColour(juce::PopupMenu::highlightedTextColourId,Theme::bone);
+        setColour(juce::TextButton::buttonOnColourId,Theme::greenDim);
+        setColour(juce::TooltipWindow::backgroundColourId,Theme::panelRaised);
+        setColour(juce::TooltipWindow::textColourId,Theme::bone);
+        setColour(juce::TooltipWindow::outlineColourId,Theme::greenDim);
+    }
+    // Deterministic horizontal-slider layout so painted range labels line up with the track.
+    juce::Slider::SliderLayout getSliderLayout(juce::Slider& s) override {
+        if(s.getSliderStyle()!=juce::Slider::LinearHorizontal || s.getTextBoxPosition()!=juce::Slider::TextBoxRight)
+            return juce::LookAndFeel_V4::getSliderLayout(s);
+        const auto b=s.getLocalBounds();
+        const int tw=std::min(s.getTextBoxWidth(),b.getWidth()/2),th=std::min(s.getTextBoxHeight(),b.getHeight());
+        juce::Slider::SliderLayout l;
+        l.textBoxBounds={b.getRight()-tw,b.getCentreY()-th/2,tw,th};
+        l.sliderBounds={b.getX(),b.getY(),b.getWidth()-tw-6,b.getHeight()};
+        return l;
+    }
+    juce::Label* createSliderTextBox(juce::Slider& s) override {
+        auto* l=juce::LookAndFeel_V4::createSliderTextBox(s);
+        l->setFont(juce::Font(juce::FontOptions(s.getSliderStyle()==juce::Slider::LinearHorizontal?12.5f:10.5f)));
+        l->setJustificationType(juce::Justification::centred);
+        l->setBorderSize(juce::BorderSize<int>(0,2,0,2));
+        l->setMinimumHorizontalScale(.75f);
+        return l;
+    }
+    void drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,bool highlighted,bool) override {
+        const auto area=b.getLocalBounds().toFloat();
+        const float s=std::min(16.f,area.getHeight()-4.f);
+        const juce::Rectangle<float> box(area.getX()+2.f,area.getCentreY()-s*.5f,s,s);
+        const bool on=b.getToggleState();
+        g.setColour(on?Theme::green.withAlpha(.16f):Theme::background);g.fillRoundedRectangle(box,3.f);
+        g.setColour(on?Theme::green:(highlighted?Theme::greenLight:Theme::greenDim.brighter(.4f)));
+        g.drawRoundedRectangle(box,3.f,1.3f);
+        if(on){
+            juce::Path tick;
+            tick.startNewSubPath(box.getX()+s*.24f,box.getCentreY());
+            tick.lineTo(box.getX()+s*.44f,box.getBottom()-s*.27f);
+            tick.lineTo(box.getRight()-s*.22f,box.getY()+s*.27f);
+            g.strokePath(tick,juce::PathStrokeType(2.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        }
+        g.setColour(b.isEnabled()?Theme::bone:Theme::muted);g.setFont(titleFont(11.5f));
+        g.drawText(b.getButtonText(),juce::Rectangle<float>(box.getRight()+7.f,area.getY(),area.getRight()-box.getRight()-7.f,area.getHeight()),
+                   juce::Justification::centredLeft,true);
+    }
+    void drawCornerResizer(juce::Graphics& g,int w,int h,bool over,bool dragging) override {
+        g.setColour((over||dragging)?Theme::green:Theme::greenDim.brighter(.5f));
+        for(int i=1;i<=3;++i) {
+            const float o=static_cast<float>(i)*5.f;
+            g.drawLine(static_cast<float>(w)-o,static_cast<float>(h)-1.f,static_cast<float>(w)-1.f,static_cast<float>(h)-o,1.5f);
+        }
     }
     void drawLinearSlider(juce::Graphics& g,int x,int y,int w,int h,float pos,
                           float minPos,float maxPos,juce::Slider::SliderStyle style,
@@ -95,7 +154,7 @@ public:
     explicit ScenePad(SkellAfarAudioProcessor& p):processor(p){setMouseCursor(juce::MouseCursor::DraggingHandCursor);}
     void paint(juce::Graphics& g) override {
         panel(g,getLocalBounds().toFloat());
-        g.setColour(Theme::bone);g.setFont(titleFont(14.f));g.drawText("SCENE PAD",12,10,getWidth()-24,18,juce::Justification::centredLeft);
+        sectionTitle(g,"SCENE PAD",12.f,9.f,static_cast<float>(getWidth())-24.f,14.f);
         const auto r=juce::Rectangle<float>(15,39,static_cast<float>(getWidth())-30,static_cast<float>(getHeight())-57);
         juce::ColourGradient padGradient(Theme::panelRaised,r.getX(),r.getY(),Theme::background,r.getRight(),r.getBottom(),false);
         g.setGradientFill(padGradient);g.fillRoundedRectangle(r,6.f);
@@ -116,7 +175,9 @@ public:
         g.setColour(Theme::muted.withAlpha(.85f));g.setFont(juce::Font(juce::FontOptions(9.5f)));
         g.drawText("NEAR",19,43,53,13,juce::Justification::centredLeft);
         g.drawText("FAR",19,getHeight()-34,53,13,juce::Justification::centredLeft);
-        g.drawText("WHISPER        EFFORT        SHOUT",16,getHeight()-17,getWidth()-32,13,juce::Justification::centred);
+        g.drawText("WHISPER",r.getX(),getHeight()-17.f,70.f,13.f,juce::Justification::centredLeft);
+        g.drawText("EFFORT",r.getCentreX()-35.f,getHeight()-17.f,70.f,13.f,juce::Justification::centred);
+        g.drawText("SHOUT",r.getRight()-70.f,getHeight()-17.f,70.f,13.f,juce::Justification::centredRight);
         g.setColour(Theme::bone.withAlpha(.85f));g.setFont(titleFont(10.f));
         g.drawText(juce::String(distance,1)+" m",r.getRight()-80.f,r.getY()+5.f,72.f,17.f,juce::Justification::centredRight);
     }
@@ -140,18 +201,42 @@ class MeterView final : public juce::Component, private juce::Timer {
 public:
     explicit MeterView(SkellAfarAudioProcessor& p):processor(p){startTimerHz(25);}
     void paint(juce::Graphics& g) override {
-        const float pk=std::clamp(processor.meterPeak.load(std::memory_order_relaxed),0.f,1.f);
+        const float w=static_cast<float>(getWidth());
+        const float peak=std::clamp(processor.meterPeak.load(std::memory_order_relaxed),0.f,1.f);
         const float clarity=std::clamp(processor.meterClarity.load(std::memory_order_relaxed),0.f,1.f);
-        g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(10.f)));
-        g.drawText("PEAK",0,0,getWidth(),13,juce::Justification::centred);
-        g.setColour(Theme::panelRaised);g.fillRoundedRectangle(5.f,17.f,getWidth()-10.f,7.f,3.f);
-        g.setColour(pk>.9f?Theme::fire:Theme::green);g.fillRoundedRectangle(5.f,17.f,(getWidth()-10.f)*pk,7.f,3.f);
-        g.setColour(Theme::muted);g.drawText("CLEAR",0,30,getWidth(),13,juce::Justification::centred);
-        g.setColour(Theme::panelRaised);g.fillRoundedRectangle(5.f,48.f,getWidth()-10.f,7.f,3.f);
-        g.setColour(Theme::ice);g.fillRoundedRectangle(5.f,48.f,(getWidth()-10.f)*clarity,7.f,3.f);
+        // dB-scaled segmented LED bar (-48..0 dBFS) with peak-hold marker
+        constexpr int segments=26;
+        const float gap=2.f,segW=(w-gap*(segments-1))/segments;
+        const float db=juce::Decibels::gainToDecibels(peak,-60.f);
+        g.setFont(juce::Font(juce::FontOptions(10.f)));
+        g.setColour(Theme::muted);g.drawText("OUTPUT",0.f,0.f,80.f,12.f,juce::Justification::centredLeft);
+        g.setColour(db>-1.f?Theme::fire:Theme::bone);
+        g.drawText(peak<.001f?juce::String("-inf"):juce::String(db,1)+" dB",w-80.f,0.f,80.f,12.f,juce::Justification::centredRight);
+        const int lit=juce::roundToInt(fraction*segments),holdIndex=juce::jlimit(0,segments-1,juce::roundToInt(hold*segments)-1);
+        for(int i=0;i<segments;++i) {
+            const float pos=static_cast<float>(i)/segments;
+            const auto on=pos<.70f?Theme::green:(pos<.88f?juce::Colour(0xffffc24a):Theme::fire);
+            const bool active=i<lit,isHold=(i==holdIndex && hold>.02f);
+            g.setColour(isHold?Theme::bone:(active?on:Theme::panelRaised));
+            g.fillRoundedRectangle(static_cast<float>(i)*(segW+gap),15.f,segW,8.f,1.5f);
+        }
+        g.setColour(Theme::muted);g.drawText("CLARITY",0.f,31.f,80.f,12.f,juce::Justification::centredLeft);
+        g.setColour(Theme::bone);g.drawText(juce::String(juce::roundToInt(clarity*100.f))+"%",w-80.f,31.f,80.f,12.f,juce::Justification::centredRight);
+        g.setColour(Theme::panelRaised);g.fillRoundedRectangle(0.f,46.f,w,8.f,4.f);
+        juce::ColourGradient fill(Theme::ice.darker(.4f),0.f,0.f,Theme::ice,w,0.f,false);
+        g.setGradientFill(fill);g.fillRoundedRectangle(0.f,46.f,std::max(8.f,w*clarity),8.f,4.f);
     }
 private:
-    void timerCallback() override {repaint();}
+    void timerCallback() override {
+        const float peak=std::clamp(processor.meterPeak.load(std::memory_order_relaxed),0.f,1.f);
+        fraction=std::clamp((juce::Decibels::gainToDecibels(peak,-60.f)+48.f)/48.f,0.f,1.f);
+        if(fraction>=hold){hold=fraction;holdFrames=30;}
+        else if(holdFrames>0)--holdFrames;
+        else hold=std::max(fraction,hold-.025f);
+        repaint();
+    }
     SkellAfarAudioProcessor& processor;
+    float fraction=0.f,hold=0.f;
+    int holdFrames=0;
 };
 }

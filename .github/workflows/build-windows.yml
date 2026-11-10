@@ -1,27 +1,27 @@
 name: Skell-Afar Windows VST3 / Standalone
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
   pull_request:
-permissions:
-  contents: read
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure JUCE and pinned SkellCore
+      - name: Configure (JUCE 8.0.12, pinned SkellCore)
         run: cmake -S . -B build -A x64
       - name: Compile Release
         run: cmake --build build --config Release --parallel 2
-      - name: Run physics, throat, and scene tests
+      - name: Run physics tests
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Package VST3 and standalone
         shell: pwsh
         run: |
-          $plugin = Get-ChildItem -Path build -Directory -Recurse -Filter '*.vst3' | Select-Object -First 1
-          if (-not $plugin) { throw 'Skell-Afar VST3 bundle missing' }
-          $app = Get-ChildItem -Path build -File -Recurse -Filter 'Skell-Afar.exe' | Select-Object -First 1
-          if (-not $app) { throw 'Skell-Afar standalone missing' }
+          $plugin = Get-ChildItem -Path build -Recurse -Directory -Filter 'Skell-Afar.vst3' | Select-Object -First 1
+          if (-not $plugin) { throw 'Skell-Afar.vst3 not found' }
+          $app = Get-ChildItem -Path build -Recurse -File -Filter 'Skell-Afar.exe' | Select-Object -First 1
+          if (-not $app) { throw 'Standalone Skell-Afar.exe not found' }
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           Copy-Item $plugin.FullName -Destination 'dist/Skell-Afar.vst3' -Recurse
           Copy-Item $app.FullName -Destination 'dist/Skell-Afar.exe'

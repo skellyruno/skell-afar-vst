@@ -18,6 +18,8 @@ public:
             tabs[i].setColour(juce::TextButton::textColourOffId,Theme::bone);
             addAndMakeVisible(tabs[i]);
         }
+        search.setIndents(9,7);
+        search.setFont(juce::Font(juce::FontOptions(13.f)));
         search.setTextToShowWhenEmpty("Search spaces...",Theme::muted);
         search.setColour(juce::TextEditor::backgroundColourId,Theme::panelRaised);
         search.setColour(juce::TextEditor::textColourId,Theme::bone);
@@ -47,8 +49,7 @@ public:
     }
     void paint(juce::Graphics& g) override {
         panel(g,getLocalBounds().toFloat());
-        g.setColour(Theme::bone);g.setFont(titleFont(15));
-        g.drawText("SPACE BROWSER",14,9,getWidth()-28,20,juce::Justification::centredLeft);
+        sectionTitle(g,"SPACE BROWSER",14.f,9.f,static_cast<float>(getWidth())-28.f,15.f);
     }
     void resized() override {
         const int w=getWidth()-22;
@@ -62,19 +63,33 @@ private:
         if(row<0 || row>=static_cast<int>(filtered.size()))return;
         const int id=filtered[static_cast<std::size_t>(row)];
         const auto& spec=getSpace(id);
-        if (covers[static_cast<std::size_t>(id)].isValid()) {
-            g.drawImage(covers[static_cast<std::size_t>(id)],0,0,w,h,0,0,480,200);
-            g.setColour(juce::Colours::black.withAlpha(.50f));g.fillRect(0,0,w,h);
+        const juce::Rectangle<float> card(1.f,2.f,static_cast<float>(w)-2.f,static_cast<float>(h)-4.f);
+        juce::Path clip;clip.addRoundedRectangle(card,7.f);
+        g.saveState();
+        g.reduceClipRegion(clip);
+        const auto& img=covers[static_cast<std::size_t>(id)];
+        if(img.isValid()) {
+            // crop (not stretch) the cover to the card's aspect ratio
+            const float srcW=static_cast<float>(img.getWidth()),srcFullH=static_cast<float>(img.getHeight());
+            const float srcH=std::min(srcFullH,srcW*card.getHeight()/card.getWidth());
+            g.drawImage(img,juce::roundToInt(card.getX()),juce::roundToInt(card.getY()),juce::roundToInt(card.getWidth()),juce::roundToInt(card.getHeight()),
+                        0,juce::roundToInt((srcFullH-srcH)*.5f),img.getWidth(),juce::roundToInt(srcH));
         } else { g.fillAll(Theme::panelRaised); }
-        if(selected){
-            g.setColour(Theme::green.withAlpha(.14f));g.fillRect(0,0,w,h);
-            g.setColour(Theme::green);g.fillRect(0,0,3,h);
-            g.drawRect(0,0,w,h,1);
-        }
-        g.setColour(Theme::bone);g.setFont(titleFont(13.5f));
-        g.drawFittedText(spec.name,12,8,w-20,23,juce::Justification::centredLeft,1);
+        juce::ColourGradient scrim(juce::Colours::black.withAlpha(.86f),card.getX(),0.f,juce::Colours::black.withAlpha(.30f),card.getRight(),0.f,false);
+        g.setGradientFill(scrim);g.fillRect(card);
+        if(selected){g.setColour(Theme::green.withAlpha(.13f));g.fillRect(card);g.setColour(Theme::green);g.fillRect(card.getX(),card.getY(),3.f,card.getHeight());}
+        g.restoreState();
+        g.setColour(selected?Theme::green:Theme::greenDim.withAlpha(.55f));
+        g.drawRoundedRectangle(card.reduced(.5f),7.f,selected?1.5f:1.f);
+        g.setColour(selected?Theme::greenLight:Theme::bone);g.setFont(titleFont(13.5f));
+        g.drawFittedText(spec.name,14,9,w-86,22,juce::Justification::centredLeft,1);
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(11.4f)));
-        g.drawFittedText(spec.description,12,34,w-20,22,juce::Justification::centredLeft,1);
+        g.drawFittedText(spec.description,14,35,w-24,22,juce::Justification::centredLeft,1);
+        const char* tag=spec.category==Category::Underground?"UNDER":spec.category==Category::Outdoor?"OUT":"IN";
+        const juce::Rectangle<float> pill(static_cast<float>(w)-58.f,11.f,46.f,15.f);
+        g.setColour(juce::Colours::black.withAlpha(.55f));g.fillRoundedRectangle(pill,7.5f);
+        g.setColour(Theme::greenDim.brighter(.4f));g.drawRoundedRectangle(pill,7.5f,1.f);
+        g.setColour(Theme::greenLight);g.setFont(titleFont(8.5f));g.drawText(tag,pill,juce::Justification::centred);
     }
     void selectedRowsChanged(int row) override {
         if(row>=0 && row<static_cast<int>(filtered.size()) && onSelect)

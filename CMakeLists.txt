@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkellAfar VERSION 0.3.0 LANGUAGES C CXX)
+project(SkellAfar VERSION 0.4.0 LANGUAGES C CXX)
 
 include(FetchContent)
 set(SKELLCORE_REV "e701a6a1e05d923f61c17275609c95122d456223" CACHE STRING "Immutable SkellCore template revision")
@@ -21,6 +21,10 @@ if(SKELL_AFAR_BUILD_HEADLESS_TESTS)
   target_compile_features(SkellAfarStress PRIVATE cxx_std_17)
   target_include_directories(SkellAfarStress PRIVATE tests/stub)
   add_test(NAME SkellAfarStress COMMAND SkellAfarStress)
+  add_executable(SkellAfarBedsPresence tests/test_beds_presence.cpp)
+  target_compile_features(SkellAfarBedsPresence PRIVATE cxx_std_17)
+  target_include_directories(SkellAfarBedsPresence PRIVATE tests/stub)
+  add_test(NAME SkellAfarBedsPresence COMMAND SkellAfarBedsPresence)
 endif()
 if(NOT SKELL_AFAR_HEADLESS_ONLY)
   if(DEFINED JUCE_PATH AND EXISTS "${JUCE_PATH}/CMakeLists.txt")
@@ -56,7 +60,7 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     Source/PluginProcessor.cpp Source/PluginProcessor.h
     Source/PluginEditor.cpp Source/PluginEditor.h
     Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/ThroatTexture.h
-    Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Controls.h)
+    Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Controls.h Source/ui/DetailPanel.h)
   target_compile_features(SkellAfar PRIVATE cxx_std_17)
   target_compile_definitions(SkellAfar PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
   target_link_libraries(SkellAfar PRIVATE

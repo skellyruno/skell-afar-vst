@@ -12,6 +12,26 @@ namespace afar {
 class ThroatTexture {
 public:
     struct Stereo { float left, right; };
+    // First-order antiderivative anti-aliased tanh (Parker/Bilbao ADAA): same curve, far less
+    // aliasing than the plain per-sample tanh, with no latency and no oversampling buffers.
+    struct AdaaTanh {
+        static float logCosh(float x) noexcept {
+            const float a=std::abs(x);
+            return a+std::log1p(std::exp(-2.f*a))-0.69314718f;
+        }
+        float process(float x) noexcept {
+            float y;
+            if(!valid) y=std::tanh(x);
+            else {
+                const float dx=x-prevX,f=logCosh(x);
+                y=std::abs(dx)<1.0e-4f ? std::tanh(.5f*(x+prevX)) : (f-prevF)/dx;
+            }
+            prevX=x;prevF=logCosh(x);valid=true;
+            return y;
+        }
+        void invalidate() noexcept { valid=false; }
+        float prevX=0.f,prevF=0.f;bool valid=false;
+    };
     void prepare(double rate) noexcept {
         const auto sr = std::clamp(std::isfinite(rate) ? rate : 48000.0, 8000.0, 384000.0);
         envelopeAttack = std::exp(-1.0 / (sr * .004));
@@ -20,11 +40,18 @@ public:
         highPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 3100.0 / sr));
         texturePole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 36.0 / sr));
         raspPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * std::min(7800.0,sr*.20) / sr));
+        fryInc = static_cast<float>(52.0/sr);
+        jitterPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 7.0 / sr));
         sibilancePole = static_cast<float>(1.0-std::exp(-1.0/(sr*.008)));
         macroPole = static_cast<float>(1.0-std::exp(-1.0 / (sr * .025)));
+        // Breath noise is band-shaped (aspiration band ~0.7-5.5 kHz) instead of raw white
+        // noise, which put ~79% of the added energy above 5 kHz as harsh hiss.
+        noiseHpPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * 700.0 / sr));
+        noiseLpPole = static_cast<float>(1.0-std::exp(-2.0 * 3.141592653589793 * std::min(5500.0,sr*.22) / sr));
+        noiseGain = static_cast<float>(std::clamp(std::sqrt(.5*sr/4800.0)*.8,1.0,3.0));
         reset();
     }
-    void reset() noexcept { state = {}; macro = target = 0.f; rng = 0x42fe209bu; }
+    void reset() noexcept { state = {}; macro = target = 0.f; rng = 0x42fe209bu; nLow = nLp1 = nLp2 = 0.f; fryPhase = jitter = 0.f; fryMod = 1.f; }
     void setAmount(float amount) noexcept {
         target = std::clamp(std::isfinite(amount) ? amount : 0.f,0.f,1.f);
     }
@@ -35,7 +62,18 @@ public:
         if (macro <= 1.0e-6f && target == 0.f) return {l,r};
         // Constant-CPU deterministic linked noise avoids decorrelated stereo hiss.
         rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
-        const float noise = (static_cast<float>(rng >> 8) * (1.f / 8388608.f)) - 1.f;
+        const float white = (static_cast<float>(rng >> 8) * (1.f / 8388608.f)) - 1.f;
+        nLow += noiseHpPole * (white - nLow);
+        nLp1 += noiseLpPole * ((white - nLow) - nLp1);
+        nLp2 += noiseLpPole * (nLp1 - nLp2);
+        const float noise = nLp2 * noiseGain;
+        // Voice-locked 'fry': a jittered ~52 Hz glottal-pulse-shaped modulation of the harmonic
+        // drive only (the dry fundamental is never modulated). Mean gain is 1.
+        jitter += jitterPole * (white - jitter);
+        fryPhase += fryInc * (1.f + .35f * jitter);
+        fryPhase -= std::floor(fryPhase);
+        const float tri = 1.f - std::abs(2.f * fryPhase - 1.f);
+        fryMod = (tri * tri - (1.f / 3.f)) * 1.5f;   // zero-mean pulse train, ~[-.5, +1]
         const auto weights = morphWeights(macro);
         return {processOne(l,state[0],noise,weights),processOne(r,state[1],noise,weights)};
     }
@@ -55,7 +93,8 @@ public:
     }
 private:
     struct Channel { float env=0.f, low=0.f, smoothedHigh=0.f, creak=0.f;
-        float raspFiltered=0.f, gritFiltered=0.f, highEnergy=0.f, midEnergy=0.f; };
+        float raspFiltered=0.f, gritFiltered=0.f, highEnergy=0.f, midEnergy=0.f;
+        AdaaTanh raspSat, gritSat; };
     float processOne(float x, Channel& c, float noise,const std::array<float,4>& w) noexcept {
         x=std::clamp(x,-8.f,8.f);
         const float amplitude=std::abs(x);
@@ -74,19 +113,23 @@ private:
         // but back it off when high-band consonants dominate that body band.
         const float consonant=std::clamp((c.highEnergy-c.midEnergy*1.8f)/(.015f+c.highEnergy),0.f,1.f);
         const float bodyGate=gate*(1.f-.78f*consonant);
-        const float breath=noise * gate * std::min(.18f,c.env * .40f);
+        // Breath is masked by loud voiced peaks: scaling by instantaneous level keeps the added
+        // noise from stacking on waveform crests (AIRY raised peaks ~1-2 dB over the input).
+        const float breath=noise * gate * std::min(.18f,c.env * .40f) / (1.f+3.f*amplitude);
         const float airy=x + upper*.12f*gate + breath;
         // Generate nonlinear throat harmonics only from the 240Hz..3.1kHz band.
         // Fundamental and high consonant detail bypass the saturation branch.
-        const float drive=mid*2.2f;
-        const float softSat=std::tanh(drive) * .455f;
+        const bool raspOn=w[2]>1.0e-4f,gritOn=w[3]>1.0e-4f;
+        const float drive=mid*2.2f*(1.f+.30f*fryMod);
+        const float softSat=raspOn ? c.raspSat.process(drive)*.455f : (c.raspSat.invalidate(),mid);
         const float raspHarmonics=(softSat-mid)*.34f*bodyGate;
         c.raspFiltered+=raspPole*(raspHarmonics-c.raspFiltered);
         c.creak += texturePole*(std::abs(mid)-c.creak);
         const float creak=std::clamp(c.creak*5.5f,0.f,1.f);
         const float rasp=x+c.raspFiltered+breath*.38f;
         // Extra low-frequency crackle is voice-locked, not an always-on oscillator.
-        const float gritHarmonics=(std::tanh(mid*4.f)*.245f-mid)*.65f*bodyGate;
+        const float gritSat=gritOn ? c.gritSat.process(mid*4.f*(1.f+.65f*fryMod))*.245f : (c.gritSat.invalidate(),mid);
+        const float gritHarmonics=(gritSat-mid)*.65f*bodyGate;
         c.gritFiltered+=raspPole*(gritHarmonics-c.gritFiltered);
         const float gritty=x+c.gritFiltered + mid*(creak*.11f*bodyGate)
                         + breath*.85f + noise*gate*std::min(.032f,c.env*.095f);
@@ -98,6 +141,8 @@ private:
     double envelopeAttack=.99,envelopeRelease=.999;
     float lowPole=.04f,highPole=.31f,texturePole=.004f,macroPole=.0004f,raspPole=.25f,sibilancePole=.005f;
     float macro=0.f,target=0.f;
+    float fryInc=.001f,jitterPole=.001f,fryPhase=0.f,jitter=0.f,fryMod=1.f;
+    float noiseHpPole=.09f,noiseLpPole=.5f,noiseGain=1.6f,nLow=0.f,nLp1=0.f,nLp2=0.f;
     std::uint32_t rng=0x42fe209bu;
 };
 } // namespace afar

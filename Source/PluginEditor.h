@@ -14,6 +14,7 @@ public:
 private:
     class Surface;
     SkellAfarAudioProcessor& processor;
+    afar::ui::AfarLookAndFeel look;
     std::unique_ptr<Surface> surface;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAfarAudioProcessorEditor)
 };

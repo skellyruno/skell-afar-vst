@@ -39,7 +39,8 @@ struct SceneControls {
     float mix = 1.f, outputDb = 0.f, temperature = 20.f, humidity = 50.f, absorption = .7f, bedGain = 1.f;
     int scene=5, recordedAs=2, occlusionType=0, micType=7, micStereo=0;
     bool removeDelay = true, bypassEffort=false, muteAmbience=false, ambienceDuck=false, delta=false;
-    std::array<float, 8> beds {};
+    // Bed trims in dB: -20 == scene default ("AUTO"), -60 == off, up to +12.
+    std::array<float, 8> beds {-20.f,-20.f,-20.f,-20.f,-20.f,-20.f,-20.f,-20.f};
 };
 
 struct Frame { float left=0, right=0; };
@@ -60,6 +61,11 @@ public:
         controlPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.0012)));
         echoPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.006)));
         dripDecay=static_cast<float>(std::exp(-1.0/(sr*.040)));
+        presLowAlpha=static_cast<float>(1.0-std::exp(-2.0*3.141592653589793*1800.0/sr));
+        presHighAlpha=static_cast<float>(1.0-std::exp(-2.0*3.141592653589793*std::min(5200.0,sr*.22)/sr));
+        bedPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.08)));
+        gustPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.9)));
+        secondSamples=static_cast<std::uint64_t>(std::llround(sr));
         reset();
     }
     void reset() noexcept {
@@ -76,6 +82,9 @@ public:
         echoTapSmoothed={0.f,0.f,0.f};echoTapTargets=echoTapSmoothed;
         lastDrr=lastDrrTarget=0.f;
         dripPhase=dripLevel=0.f;
+        presLow={};presHigh={};presenceTarget=presenceSmoothed=0.f;
+        bedTarget={};bedSmoothed={};
+        gustLow=windLow=waterA=waterB=trafficLow=roomLow=insLow=forestLow=0.f;
     }
     int latencySamples() const noexcept { return limiter.latencySamples(); }
     void setScene(int id) noexcept {
@@ -122,7 +131,12 @@ public:
             sourceGainTarget=dbGain(gainDb);
             outputGainTarget=dbGain(p.outputDb);
             ambientGainTarget=p.muteAmbience || p.ambienceDb<=-59.9f ? 0.f
-                : dbGain(p.ambienceDb)*.02f*std::clamp(p.bedGain,0.f,4.f);
+                : dbGain(p.ambienceDb);   // beds are level-matched to ~-22 dBFS rms at 0 dB
+            for(std::size_t i=0;i<bedTarget.size();++i) bedTarget[i]=bedWeight(static_cast<int>(i),space.ambience,p.beds[i]);
+            // Presence Hold: restore the 1.8-5.2 kHz speech band that air absorption removes, more
+            // at distance, and less on loud passages (so quiet consonants are what gets held up).
+            const float distFactor=std::clamp(std::log10(1.f+std::max(0.f,p.distance))/2.3f,0.f,1.f);
+            presenceTarget=std::clamp(p.presence,0.f,1.f)*(.50f+1.20f*distFactor);
             const float face=std::clamp(p.angle/180.f,0.f,1.f);
             const float weather=1.f + std::clamp((20.f-p.temperature)*.006f,-.15f,.15f)
                                       + std::clamp((50.f-p.humidity)*.003f,-.15f,.15f);
@@ -153,6 +167,8 @@ public:
         cutoffAlphaSmoothed+=controlPole*(cutoffAlphaTarget-cutoffAlphaSmoothed);
         micAlphaSmoothed+=controlPole*(micAlphaTarget-micAlphaSmoothed);
         earlyGainSmoothed+=controlPole*(earlyGainTarget-earlyGainSmoothed);
+        presenceSmoothed+=controlPole*(presenceTarget-presenceSmoothed);
+        const float presenceNow=presenceSmoothed*(1.f-.5f*std::clamp(voiceEnv*8.f,0.f,1.f));
         // Fractional reflection delays are smoothly moved instead of snapping
         // by up to a control block when SIZE/SPACE is automated.
         for(std::size_t k=0;k<echoTapSmoothed.size();++k)
@@ -192,8 +208,10 @@ public:
             direct[c].push(excitation);
             reflections[c].push(excitation);
             float d=direct[c].tap(tof);
+            presLow[c]+=presLowAlpha*(d-presLow[c]);
+            presHigh[c]+=presHighAlpha*(d-presHigh[c]);
             directLow[c]+=alpha*(d-directLow[c]);
-            d=directLow[c]*directGain;
+            d=(directLow[c]+(presHigh[c]-presLow[c])*presenceNow)*directGain;
             nearSignal[c]=sanitize(d);
             // 3 sparse scene taps. Distance of reflection objects, not the source distance.
             // Canyon tap is intentionally very late, box-room taps follow dimensions.
@@ -204,9 +222,9 @@ public:
         }
         // Shared 4-line SkellCore FDN, used as the first live diffusion stage.
         const auto late = diffuse.processFrame(shaped, shaped);
-        const float ambient=makeAmbience(space.ambience,p);
+        const float ambient=makeAmbience(p);
         const float lateGain = space.diffuseGain * (space.isOpen ? .48f: 1.f);
-        const float voiceBoost=1.f+std::clamp(p.presence,0.f,1.f)*.55f;
+        const float voiceBoost=1.f;
         const float diffuseL=late[0]*lateGain;
         const float diffuseR=late[1]*lateGain;
         const float wetL=nearSignal[0]*voiceBoost+early[0]+diffuseL+ambient;
@@ -242,44 +260,76 @@ private:
         noiseState ^= noiseState<<13; noiseState ^= noiseState>>17; noiseState ^= noiseState<<5;
         return static_cast<float>((noiseState>>8) * (2.0/16777216.0) - 1.0);
     }
-    float makeAmbience(AmbienceKind kind,const SceneControls& p) noexcept {
-        // Even when muted keep RNG advancing: repeatable renders and a smooth
-        // AMBIENCE/MUTE ramp from the cached scene-gain coefficient.
-        float n=nextNoise();
-        const float coeff=kind==AmbienceKind::Water ? .10f : kind==AmbienceKind::Room ? .015f : .004f;
-        ambienceLow[0] += coeff*(n-ambienceLow[0]);
-        const float wind=ambienceLow[0]*8.f;
-        const float hiss=n*.35f;
-        float bed=0.f;
+    static bool nativeBed(AmbienceKind kind,int index) noexcept {
         switch(kind) {
-            case AmbienceKind::Water: {
-                // Short procedural drip transients; no samples or IRs required.
-                // Trigger by deterministic PRNG bits (roughly 1.5/s at 48 kHz),
-                // then ring a decaying resonator with a bounded tail.
-                if((noiseState & 0x7fffu)==0 && dripLevel<.004f) {
-                    dripLevel=.22f;dripPhase=0.f;
-                    dripHz=(noiseState & 0x10000u) ? 1517.f:1129.f;
-                }
-                float drip=0.f;
-                if(dripLevel>1.e-5f) {
-                    dripPhase+=2.f*pi*dripHz/static_cast<float>(sr);
-                    if(dripPhase>2.f*pi)dripPhase-=2.f*pi;
-                    drip=std::sin(dripPhase)*dripLevel;
-                    dripLevel*=dripDecay;
-                }
-                bed=wind*.7f+hiss*.1f+drip;
-                break;
-            }
-            case AmbienceKind::Forest: bed=wind*.45f+hiss*.08f; break;
-            case AmbienceKind::Insects: bed=hiss*.1f+std::sin(2.f*pi*720.f*static_cast<float>(sampleIndex%static_cast<uint64_t>(sr))/static_cast<float>(sr))*.01f; break;
-            case AmbienceKind::Traffic: bed=wind*.95f; break;
-            case AmbienceKind::Drone: bed=wind*.25f; break;
-            case AmbienceKind::Room: bed=hiss*.08f+wind*.13f; break;
-            case AmbienceKind::Wind: bed=wind*.7f; break;
+            case AmbienceKind::Wind: return index==0;
+            case AmbienceKind::Water: return index==1 || index==2;
+            case AmbienceKind::Traffic: return index==3;
+            case AmbienceKind::Room: return index==4;
+            case AmbienceKind::Insects: return index==5;
+            case AmbienceKind::Forest: return index==6;
+            case AmbienceKind::Drone: return index==7;
         }
-        const float gain=ambientGainSmoothed;
+        return false;
+    }
+    // Bed index: 0 wind, 1 water flow, 2 drips, 3 traffic, 4 room tone, 5 insects, 6 forest, 7 drone.
+    // Trim in dB, -20 == scene default. Beds native to the scene play at the trimmed level; any other
+    // bed is added progressively as its trim rises above the default.
+    static float bedWeight(int index,AmbienceKind kind,float levelDb) noexcept {
+        if(levelDb<=-59.9f) return 0.f;
+        const float rel=std::clamp(levelDb+20.f,-40.f,32.f);
+        if(nativeBed(kind,index)) return dbGain(std::min(rel,12.f));
+        return rel>0.f ? std::clamp(rel/32.f,0.f,1.f) : 0.f;
+    }
+    float makeAmbience(const SceneControls& p) noexcept {
+        // One noise draw per sample keeps renders repeatable even while beds are idle or muted.
+        const float n=nextNoise();
+        for(std::size_t i=0;i<bedSmoothed.size();++i) bedSmoothed[i]+=bedPole*(bedTarget[i]-bedSmoothed[i]);
+        gustLow+=gustPole*(n-gustLow);
+        const float gust=std::clamp(1.f+320.f*gustLow,.3f,1.7f);
+        windLow+=.004f*(n-windLow);
+        const float wind=windLow*8.f;
+        const float t=static_cast<float>(sampleIndex%secondSamples)/static_cast<float>(sr);
+        const float twoPi=2.f*pi;
+        const auto active=[this](std::size_t i){return bedSmoothed[i]>1.0e-5f;};
+        float sum=0.f;
+        if(active(0)) sum+=bedSmoothed[0]*wind*.71f*gust;
+        if(active(1)) {
+            waterA+=.10f*(n-waterA); waterB+=.012f*(n-waterB);
+            sum+=bedSmoothed[1]*(waterA-waterB)*1.56f*(.7f+.3f*gust);
+        }
+        if(active(2)) {
+            // Procedural drips: PRNG-triggered (~1.5/s), decaying resonator, bounded tail.
+            if((noiseState & 0x7fffu)==0 && dripLevel<.004f) {
+                dripLevel=.22f;dripPhase=0.f;
+                dripHz=(noiseState & 0x10000u) ? 1517.f:1129.f;
+            }
+            float drip=0.f;
+            if(dripLevel>1.e-5f) {
+                dripPhase+=twoPi*dripHz/static_cast<float>(sr);
+                if(dripPhase>twoPi)dripPhase-=twoPi;
+                drip=std::sin(dripPhase)*dripLevel;
+                dripLevel*=dripDecay;
+            }
+            sum+=bedSmoothed[2]*drip*.55f;
+        }
+        if(active(3)) { trafficLow+=.012f*(n-trafficLow); sum+=bedSmoothed[3]*trafficLow*3.6f*(.5f+.5f*gust); }
+        if(active(4)) {
+            roomLow+=.015f*(n-roomLow);
+            sum+=2.5f*bedSmoothed[4]*(n*.08f+roomLow*8.f*.13f+std::sin(twoPi*60.f*t)*.012f);
+        }
+        if(active(5)) {
+            insLow+=.3f*(n-insLow);
+            const float chirp=std::max(0.f,std::sin(twoPi*9.f*t));
+            sum+=1.9f*bedSmoothed[5]*((n-insLow)*.10f*(.3f+.7f*chirp)+std::sin(twoPi*720.f*t)*.02f*chirp);
+        }
+        if(active(6)) {
+            forestLow+=.25f*(n-forestLow);
+            sum+=1.57f*bedSmoothed[6]*(wind*.45f*gust+(n-forestLow)*.07f*std::clamp(gust-.6f,0.f,1.2f));
+        }
+        if(active(7)) sum+=2.76f*bedSmoothed[7]*(std::sin(twoPi*55.f*t)*.05f+std::sin(twoPi*83.f*t)*.03f+wind*.25f);
         const float duck=p.ambienceDuck ? 1.f-.45f*std::clamp(voiceEnv*6.f,0.f,1.f) : 1.f;
-        return sanitize(bed*gain*duck);
+        return sanitize(sum*ambientGainSmoothed*duck);
     }
     double sr=48000.; int channels=2, currentScene=5, quality=1;
     std::array<DelayLine,2> direct, reflections;
@@ -300,5 +350,10 @@ private:
     std::array<float,3> echoTapTargets{},echoTapSmoothed{};
     float controlPole=.017f,echoPole=.003f,dripDecay=.9995f;
     float dripPhase=0.f,dripLevel=0.f,dripHz=1200.f;
+    std::array<float,2> presLow {}, presHigh {};
+    float presLowAlpha=.2f,presHighAlpha=.5f,presenceTarget=0.f,presenceSmoothed=0.f;
+    std::array<float,8> bedTarget {}, bedSmoothed {};
+    float bedPole=.0004f,gustPole=.0001f,gustLow=0.f,windLow=0.f,waterA=0.f,waterB=0.f,trafficLow=0.f,roomLow=0.f,insLow=0.f,forestLow=0.f;
+    std::uint64_t secondSamples=48000;
 };
 } // namespace afar

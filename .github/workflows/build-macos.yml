@@ -1,9 +1,9 @@
 name: Skell-Afar macOS VST3 / Standalone
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
   pull_request:
-permissions:
-  contents: read
 jobs:
   build:
     runs-on: macos-15
@@ -11,16 +11,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Configure
         run: cmake -S . -B build -G Xcode
-      - name: Compile Release
+      - name: Build
         run: cmake --build build --config Release --parallel 2
-      - name: Run physics, throat, and scene tests
+      - name: Test physics
         run: ctest --test-dir build -C Release --output-on-failure
-      - name: Package macOS binaries
+      - name: Package plugin and app
         shell: bash
         run: |
           set -euo pipefail
-          plugin="$(find build -type d -name 'Skell-Afar.vst3' | head -n 1)"
-          app="$(find build -type d -name 'Skell-Afar.app' | head -n 1)"
+          plugin="$(find build -name 'Skell-Afar.vst3' -type d | head -n 1)"
+          app="$(find build -name 'Skell-Afar.app' -type d | head -n 1)"
           test -n "$plugin" && test -n "$app"
           mkdir -p dist
           cp -R "$plugin" "$app" dist/
