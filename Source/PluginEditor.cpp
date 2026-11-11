@@ -5,6 +5,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace {
 struct Preset {
@@ -54,8 +55,11 @@ void setParam(SkellAfarAudioProcessor& processor,const char* id,float value) {
 
 class SkellAfarAudioProcessorEditor::Surface final : public juce::Component, private juce::Timer {
 public:
-    Surface(SkellAfarAudioProcessor& p,std::function<void(float)> scaleCallback)
-      : processor(p),onScale(std::move(scaleCallback)),browser(),sceneView(p),scenePad(p),meters(p),detail(p) {
+    Surface(SkellAfarAudioProcessor& p,std::function<void(float)> scaleCallback,
+            std::function<void()> tourCallback)
+      : processor(p),onScale(std::move(scaleCallback)),
+        onShowTour(std::move(tourCallback)),
+        browser(),sceneView(p),scenePad(p),meters(p),detail(p) {
         look=std::make_unique<afar::ui::AfarLookAndFeel>();
         setLookAndFeel(look.get());
         bg=juce::ImageFileFormat::loadFrom(BinaryData::bg_panel_png,static_cast<std::size_t>(BinaryData::bg_panel_pngSize));
@@ -135,6 +139,8 @@ public:
             juce::PopupMenu m;
             m.addItem(1,juce::String::fromUTF8("Small \xc2\xb7 75%"));m.addItem(2,juce::String::fromUTF8("Medium \xc2\xb7 100%"));
             m.addItem(3,juce::String::fromUTF8("Large \xc2\xb7 125%"));m.addItem(4,juce::String::fromUTF8("XL \xc2\xb7 150%"));
+            m.addSeparator();
+            m.addItem(5,"Help / Show Tutorial");
             // Never capture `this` inside a nested lambda initializer: MSVC binds
             // that `this` to the outer closure, rather than to Surface.
             const juce::Component::SafePointer<Surface> safeView(this);
@@ -143,6 +149,7 @@ public:
                     if (auto* view=safeView.getComponent()) {
                         constexpr float factors[]{.75f,1.f,1.25f,1.5f};
                         if(choice>=1 && choice<=4) view->onScale(factors[choice-1]);
+                        else if(choice==5 && view->onShowTour) view->onShowTour();
                     }
                 });
         };
@@ -155,6 +162,9 @@ public:
         moreButton.setTooltip("Ambience beds, air model, routing and engine options.");
         moreButton.onClick=[this]{toggleDetail();};
         detail.onClose=[this]{toggleDetail();};
+        // The advanced panel must belong to the actual component tree.
+        addAndMakeVisible(detail);
+        detail.setVisible(false);
         toggleAB.setTooltip("Switch between two complete plugin states (A / B).");
         save.setTooltip("Save the current settings as a named user preset.");
         randomise.setTooltip("Load a random factory preset.");
@@ -169,6 +179,32 @@ public:
             toggleAB.setButtonText(activeSlot==0?"A":"B");
         };
         startTimerHz(20);
+    }
+    std::vector<skellcore::ui::GuidedTourStep> tourSteps() {
+        std::vector<skellcore::ui::GuidedTourStep> steps;
+        steps.emplace_back(&presetList,"START WITH A PRESET",
+            "Pick a location or sound to get started, then tailor it to your vocal.");
+        steps.emplace_back(&browser,"CHOOSE A SPACE",
+            "Choose where your vocal lives: each space changes its acoustic character.");
+        steps.emplace_back(&effort,"VOCAL EFFORT",
+            "Move from whisper to shout to set the source performance.");
+        steps.emplace_back(&distance,"DISTANCE",
+            "Move your voice nearer or farther from the microphone in metres.");
+        steps.emplace_back(&sceneView,"VISUALIZE THE SPACE",
+            "Use the visual scene and position controls to understand the environment.");
+        steps.emplace_back(&moreButton,"MORE DETAILS",
+            "MORE opens ambience beds, routing and fine acoustic settings.");
+        steps.emplace_back(&detail,"ADVANCED SOUND DESIGN",
+            "Adjust the optional detail controls, then select BACK to return.",
+            [this]{if(!detail.isVisible())toggleDetail();});
+        steps.emplace_back(&save,"SAVE YOUR SOUND",
+            "Save the settings as a named preset. Replay this guide from SET.");
+        return steps;
+    }
+    skellcore::ui::GuidedTourPalette tourPalette() const {
+        return {afar::ui::Theme::green,afar::ui::Theme::panelRaised,
+                afar::ui::Theme::bone,afar::ui::Theme::muted,
+                juce::Colour(0xd9000000)};
     }
     ~Surface() override {
         stopTimer();
@@ -427,6 +463,7 @@ private:
     }
     SkellAfarAudioProcessor& processor;
     std::function<void(float)> onScale;
+    std::function<void()> onShowTour;
     std::unique_ptr<afar::ui::AfarLookAndFeel> look;
     juce::Image bg,logo;
     afar::ui::SpaceBrowser browser;
@@ -461,7 +498,7 @@ SkellAfarAudioProcessorEditor::SkellAfarAudioProcessorEditor(SkellAfarAudioProce
         const int h=juce::roundToInt(afar::ui::Theme::designH*factor);
         setSize(w,h);
         processor.editorState.setProperty("scale",factor,nullptr);
-    });
+    },[this]{showGuidedTour(false);});
     setLookAndFeel(&look);
     addAndMakeVisible(*surface);
     setResizable(true,true);
@@ -469,8 +506,20 @@ SkellAfarAudioProcessorEditor::SkellAfarAudioProcessorEditor(SkellAfarAudioProce
     getConstrainer()->setFixedAspectRatio(static_cast<double>(afar::ui::Theme::designW)/afar::ui::Theme::designH);
     const float factor=std::clamp(static_cast<float>(static_cast<double>(p.editorState.getProperty("scale",.75))),.75f,1.5f);
     setSize(juce::roundToInt(afar::ui::Theme::designW*factor),juce::roundToInt(afar::ui::Theme::designH*factor));
+    guidedTour=std::make_unique<skellcore::ui::GuidedTourController>(*this,"skell-afar-vst",1);
+    showGuidedTour(true);
 }
-SkellAfarAudioProcessorEditor::~SkellAfarAudioProcessorEditor(){setLookAndFeel(nullptr);}
+SkellAfarAudioProcessorEditor::~SkellAfarAudioProcessorEditor(){
+    guidedTour.reset(); // spotlight outlives no referenced controls
+    setLookAndFeel(nullptr);
+}
+void SkellAfarAudioProcessorEditor::showGuidedTour(bool firstRun) {
+    if(!guidedTour || !surface)return;
+    guidedTour->setPalette(surface->tourPalette());
+    guidedTour->setSteps(surface->tourSteps());
+    if(firstRun)guidedTour->startIfFirstRun();
+    else guidedTour->replay();
+}
 void SkellAfarAudioProcessorEditor::resized() {
     if(!surface)return;
     surface->setTransform(juce::AffineTransform());
