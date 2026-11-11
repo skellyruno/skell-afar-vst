@@ -12,6 +12,11 @@ public:
     explicit SkellAfarAudioProcessorEditor(SkellAfarAudioProcessor&);
     ~SkellAfarAudioProcessorEditor() override;
     void resized() override;
+    void dismissTourForScreenshot() { if(guidedTour)guidedTour->dismiss(); }
+    bool replayTourForScreenshot() {
+        showGuidedTour(false);
+        return guidedTour && guidedTour->isShowing();
+    }
 private:
     class Surface;
     SkellAfarAudioProcessor& processor;
