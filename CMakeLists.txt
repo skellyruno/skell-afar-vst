@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(SkellAfar VERSION 0.4.0 LANGUAGES C CXX)
 
 include(FetchContent)
-set(SKELLCORE_REV "e701a6a1e05d923f61c17275609c95122d456223" CACHE STRING "Immutable SkellCore template revision")
+set(SKELLCORE_REV "3306ad495c93e062e39b8abbf079534b0b53da4e" CACHE STRING "Immutable SkellCore template revision")
 option(SKELL_AFAR_BUILD_HEADLESS_TESTS "Build physics and scene metadata tests" ON)
 option(SKELL_AFAR_HEADLESS_ONLY "Only run standalone C++ tests, without JUCE" OFF)
 if(SKELL_AFAR_BUILD_HEADLESS_TESTS)
@@ -66,4 +66,19 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
   target_link_libraries(SkellAfar PRIVATE
     SkellCore::DSP SkellCore::UI SkellAfarAssets
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra juce::juce_dsp)
+  option(SKELL_AFAR_TOUR_SCREENSHOTS "Build actual editor tour screenshot validation" OFF)
+  if(SKELL_AFAR_TOUR_SCREENSHOTS)
+    if(NOT TARGET SkellCore::UIRenderer)
+      message(FATAL_ERROR "Pinned SkellCore UI renderer is required")
+    endif()
+    add_executable(SkellAfarTourScreenshots tests/ui_tour_renderer.cpp)
+    target_include_directories(SkellAfarTourScreenshots PRIVATE
+      "${CMAKE_CURRENT_BINARY_DIR}/SkellAfar_artefacts/JuceLibraryCode")
+    target_link_libraries(SkellAfarTourScreenshots PRIVATE
+      SkellAfar SkellCore::UIRenderer SkellCore::UI SkellCore::DSP
+      SkellAfarAssets juce::juce_audio_utils juce::juce_gui_extra)
+    target_compile_features(SkellAfarTourScreenshots PRIVATE cxx_std_17)
+    target_compile_definitions(SkellAfarTourScreenshots PRIVATE
+      JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  endif()
 endif()
