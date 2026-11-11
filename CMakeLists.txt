@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(SkellAfar VERSION 0.4.0 LANGUAGES C CXX)
 
 include(FetchContent)
-set(SKELLCORE_REV "e701a6a1e05d923f61c17275609c95122d456223" CACHE STRING "Immutable SkellCore template revision")
+set(SKELLCORE_REV "3306ad495c93e062e39b8abbf079534b0b53da4e" CACHE STRING "Immutable SkellCore template revision")
 option(SKELL_AFAR_BUILD_HEADLESS_TESTS "Build physics and scene metadata tests" ON)
 option(SKELL_AFAR_HEADLESS_ONLY "Only run standalone C++ tests, without JUCE" OFF)
 if(SKELL_AFAR_BUILD_HEADLESS_TESTS)
