@@ -39,6 +39,14 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     GIT_TAG ${SKELLCORE_REV}
     SOURCE_SUBDIR SkellCore)
   FetchContent_MakeAvailable(SkellCore)
+  # Guided Tour is header-only. Keep the verified older DSP SkellCore pin
+  # to avoid unintentionally changing Afar processing for a UI-only update.
+  FetchContent_Declare(SkellCoreTourStyle
+    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
+    GIT_TAG eb56702153c4373799a4e8e2663e0f158c0115a6
+    GIT_SHALLOW FALSE
+    SOURCE_SUBDIR _tour_headers_only)
+  FetchContent_MakeAvailable(SkellCoreTourStyle)
   juce_add_plugin(SkellAfar
     COMPANY_NAME "Skell Audio"
     BUNDLE_ID "audio.skell.afar"
@@ -61,6 +69,8 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     Source/PluginEditor.cpp Source/PluginEditor.h
     Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/ThroatTexture.h
     Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Controls.h Source/ui/DetailPanel.h)
+  target_include_directories(SkellAfar BEFORE PRIVATE
+    "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")
   target_compile_features(SkellAfar PRIVATE cxx_std_17)
   target_compile_definitions(SkellAfar PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
   target_link_libraries(SkellAfar PRIVATE
@@ -72,6 +82,10 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
       message(FATAL_ERROR "Pinned SkellCore UI renderer is required")
     endif()
     add_executable(SkellAfarTourScreenshots tests/ui_tour_renderer.cpp)
+    # Match the plugin's pinned GuidedTour header exactly; using the old
+    # SkellCore::UI transitively here causes an ODR/ABI mismatch at runtime.
+    target_include_directories(SkellAfarTourScreenshots BEFORE PRIVATE
+      "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")
     target_include_directories(SkellAfarTourScreenshots PRIVATE
       "${CMAKE_CURRENT_BINARY_DIR}/SkellAfar_artefacts/JuceLibraryCode")
     target_link_libraries(SkellAfarTourScreenshots PRIVATE
