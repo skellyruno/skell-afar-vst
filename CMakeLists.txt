@@ -82,6 +82,10 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
       message(FATAL_ERROR "Pinned SkellCore UI renderer is required")
     endif()
     add_executable(SkellAfarTourScreenshots tests/ui_tour_renderer.cpp)
+    # Match the plugin's pinned GuidedTour header exactly; using the old
+    # SkellCore::UI transitively here causes an ODR/ABI mismatch at runtime.
+    target_include_directories(SkellAfarTourScreenshots BEFORE PRIVATE
+      "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")
     target_include_directories(SkellAfarTourScreenshots PRIVATE
       "${CMAKE_CURRENT_BINARY_DIR}/SkellAfar_artefacts/JuceLibraryCode")
     target_link_libraries(SkellAfarTourScreenshots PRIVATE
