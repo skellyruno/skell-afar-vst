@@ -549,6 +549,15 @@ void SkellAfarAudioProcessorEditor::showGuidedTour(bool firstRun) {
     if(firstRun)guidedTour->startIfFirstRun();
     else guidedTour->replay();
 }
+void SkellAfarAudioProcessorEditor::dismissTourForScreenshot() {
+    if (guidedTour) guidedTour->dismiss();
+}
+bool SkellAfarAudioProcessorEditor::replayTourForScreenshot() {
+    if (!guidedTour || !surface) return false;
+    guidedTour->setPalette(surface->tourPalette());
+    guidedTour->setSteps(surface->tourSteps());
+    return guidedTour->replay();
+}
 void SkellAfarAudioProcessorEditor::resized() {
     if(!surface)return;
     surface->setTransform(juce::AffineTransform());

@@ -16,6 +16,7 @@ public:
     void setPalette(const GuidedTourPalette&) {}
     void setSteps(const std::vector<GuidedTourStep>&) {}
     void startIfFirstRun() {}
-    void replay() {}
+    bool replay() { return true; }
+    void dismiss() {}
 };
 }}

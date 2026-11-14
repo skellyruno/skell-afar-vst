@@ -12,6 +12,9 @@ public:
     explicit SkellAfarAudioProcessorEditor(SkellAfarAudioProcessor&);
     ~SkellAfarAudioProcessorEditor() override;
     void resized() override;
+    // Used by the actual-JUCE renderer, not a mock UI.
+    void dismissTourForScreenshot();
+    bool replayTourForScreenshot();
 private:
     class Surface;
     SkellAfarAudioProcessor& processor;
