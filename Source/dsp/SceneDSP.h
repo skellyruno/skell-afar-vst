@@ -1,6 +1,7 @@
 #pragma once
 #include "SceneModel.h"
 #include "RoomCharacter.h"
+#include "BandFDN.h"
 #include "ThroatTexture.h"
 #include <SkellCore/Core.h>
 #include <array>
@@ -52,8 +53,9 @@ private:
 
 struct SceneControls {
     float effort = .5f, distance = 3.f, angle = 0.f, occlusion = 0.f, throatTexture = 0.f;
-    float size = 1.f, ambienceDb = -24.f, presence = 0.f, width = 1.f;
+    float size = 1.f, ambienceDb = -34.f, presence = 0.f, width = 1.f;
     float mix = 1.f, outputDb = 0.f, temperature = 20.f, humidity = 50.f, absorption = .7f;
+    int reverbEngine=0;   // 0 = Standard (SkellCore 4-line), 1 = Dense (8-line), 2 = HD (16-line)
     int scene=5, recordedAs=2, occlusionType=0, micType=7, micStereo=0;
     bool removeDelay = true, bypassEffort=false, muteAmbience=false, ambienceDuck=false, delta=false;
     // Bed trims in dB: -20 == scene default ("AUTO"), -60 == off, up to +12.
@@ -68,11 +70,15 @@ public:
         sr = std::clamp(sampleRate, 8000.0, 384000.0);
         channels = std::clamp(outputs,1,2);
         const auto directSize = static_cast<std::size_t>(std::ceil(sr * 0.62)) + 8;
-        const auto echoSize = static_cast<std::size_t>(std::ceil(sr * 3.3)) + 8;
+        const auto echoSize = static_cast<std::size_t>(std::ceil(sr * 4.0)) + 8; // scene echo + optional 200 m propagation
         for (auto& l : direct) l.prepare(directSize);
         for (auto& l : reflections) l.prepare(echoSize);
         throat.prepare(sr);
         diffuse.prepare(sr);
+        dense.prepare(sr);
+        hd.prepare(sr);
+        fadeLen=std::max(1,static_cast<int>(sr*.08));
+        fadeLeft=0; activeEngine=prevEngine=0;
         character.prepare(sr);
         ambDelay.prepare(static_cast<std::size_t>(sr*.03)+8);
         lmPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.30)));
@@ -95,7 +101,7 @@ public:
     void reset() noexcept {
         for (auto& l : direct) l.reset();
         for (auto& l : reflections) l.reset();
-        diffuse.reset(); limiter.reset(); throat.reset(); character.reset(); ambDelay.reset();
+        diffuse.reset(); dense.reset(); hd.reset(); fadeLeft=0; limiter.reset(); throat.reset(); character.reset(); ambDelay.reset();
         lmIn=lmOut=lmInFast=lmInHold=lmOutPre=0.f; lmGain=lmTarget=1.f;
         echoGateTarget=echoGateSmoothed=0.f;
         sourceLow = {}; directLow = {}; micLow = {}; micHigh = {};
@@ -171,7 +177,7 @@ public:
             sourceGainTarget=dbGain(gainDb);
             outputGainTarget=dbGain(p.outputDb);
             ambientGainTarget=p.muteAmbience || p.ambienceDb<=-59.9f ? 0.f
-                : dbGain(p.ambienceDb)*.375f;   // beds sit at ~-30 dBFS rms at AMBIENCE 0 dB
+                : dbGain(p.ambienceDb)*.22f;   // -4.6 dB quieter across all existing factory/user presets
             for(std::size_t i=0;i<bedTarget.size();++i) bedTarget[i]=bedWeight(static_cast<int>(i),space.ambience,p.beds[i]);
             // Presence Hold: restore the 1.8-5.2 kHz speech band that air absorption removes, more
             // at distance, and less on loud passages (so quiet consonants are what gets held up).
@@ -201,7 +207,11 @@ public:
             character.setTarget(ch);
             lastDrrTarget=directReverbDb(space,p.distance);
             // Most expensive SkellCore coefficient update: only once per 32 frames.
-            diffuse.setParameters(space.rt60Seconds*p.size,space.isOpen ? .71f:.48f,1.f);
+            lateOpen=space.isOpen;
+            lateLowRt=space.rt60Seconds*p.size;
+            lateHighRt=highBandDecay(lateLowRt,space.isOpen,space.upperRollOffHz);
+            applyLateParams(activeEngine);
+            if(fadeLeft>0) applyLateParams(prevEngine);
         }
         sourceGainSmoothed+=controlPole*(sourceGainTarget-sourceGainSmoothed);
         outputGainSmoothed+=controlPole*(outputGainTarget-outputGainSmoothed);
@@ -240,7 +250,11 @@ public:
         const float alpha=cutoffAlphaSmoothed;
         const float wallGain=1.f-obstruction*(type==2 ? .62f : type==3 ? .86f : .40f);
         const float directionGain=1.f-facing*.30f;
-        const float directGain=geometricDirectGain(p.distance)*directionGain*wallGain;
+        // In beat-aligned mode preserve a quiet on-time vocal anchor at extreme distances.
+        // Without this floor late reflections can dominate completely, sounding like vocal latency.
+        // Physical arrival-delay mode retains the unmodified 1/r direct gain.
+        const float onBeatGain=p.removeDelay ? std::max(.02f,geometricDirectGain(p.distance)) : geometricDirectGain(p.distance);
+        const float directGain=onBeatGain*directionGain*wallGain;
         const float tof = p.removeDelay ? 0.f : p.distance * static_cast<float>(sr) / speedOfSound;
         // Reflections and diffuse field remain independent of the direct 1/r loss.
         float early[2] {};
@@ -253,6 +267,9 @@ public:
             direct[c].push(excitation);
             reflections[c].push(excitation);
             float d=direct[c].tap(tof);
+            // In physical arrival mode, every path must wait for propagation, not
+            // just the near microphone feed. Otherwise reverb precedes the voice.
+            if (!p.removeDelay) exc[c]=d;
             presLow[c]+=presLowAlpha*(d-presLow[c]);
             presHigh[c]+=presHighAlpha*(d-presHigh[c]);
             directLow[c]+=alpha*(d-directLow[c]);
@@ -260,13 +277,13 @@ public:
             nearSignal[c]=sanitize(d);
             // 3 sparse scene taps. Distance of reflection objects, not the source distance.
             // Canyon tap is intentionally very late, box-room taps follow dimensions.
-            early[c]=(reflections[c].tap(echoTapSmoothed[0])*.55f
-                + reflections[c].tap(echoTapSmoothed[1])*.28f
-                + reflections[c].tap(echoTapSmoothed[2])*.17f)*earlyGainSmoothed;
+            early[c]=(reflections[c].tap(echoTapSmoothed[0]+tof)*.55f
+                + reflections[c].tap(echoTapSmoothed[1]+tof)*.28f
+                + reflections[c].tap(echoTapSmoothed[2]+tof)*.17f)*earlyGainSmoothed;
             direct[c].advance(); reflections[c].advance();
         }
         // Shared 4-line SkellCore FDN, used as the first live diffusion stage.
-        const auto late = diffuse.processFrame(shaped, shaped);
+        const auto late = lateField(p.removeDelay ? shaped : .5f*(exc[0]+exc[channels-1]),p);
         const float ambient=makeAmbience(p);
         const float lateGain = space.diffuseGain * (space.isOpen ? .48f: 1.f);
         const float voiceBoost=1.f;
@@ -342,6 +359,42 @@ public:
         lastClarity=lastClarity*.995f+clear*.005f;
         ++sampleIndex;
         return {limited[0],channels==2 ? limited[1]:limited[0]};
+    }
+    // Per-space tail decay for the 8/16-line engines: the low band follows the space's RT60; the 4 kHz band is
+    // derived from the same absorption the 4-line engine's damping filter applies (so Dense/HD keep each space's
+    // character), then darkened or brightened by the space's own upper roll-off (Cellar/Cave darker, Field brighter).
+    static float highBandDecay(float lowRt,bool open,float rollOffHz) noexcept {
+        const float lossDb=open ? 5.1f : 1.69f;   // damping filter loss at 4 kHz per loop pass (.71 / .48)
+        float hi=1.f/(1.f/std::max(.15f,lowRt)+lossDb/(60.f*.037f));
+        hi*=std::clamp(std::pow(std::max(1000.f,rollOffHz)/6000.f,.6f),.6f,1.3f);
+        return std::clamp(hi,.05f,std::max(.15f,lowRt));
+    }
+    void applyLateParams(int engine) noexcept {
+        if(engine==1) dense.setParameters(lateLowRt,lateHighRt,1.f);
+        else if(engine==2) hd.setParameters(lateLowRt,lateHighRt,1.f);
+        else diffuse.setParameters(lateLowRt,lateOpen ? .71f:.48f,1.f);
+    }
+    std::array<float,2> runEngine(int engine,float x) noexcept {
+        if(engine==1) return dense.processFrame(x,x);
+        if(engine==2) return hd.processFrame(x,x);
+        return diffuse.processFrame(x,x);
+    }
+    void resetEngine(int engine) noexcept { if(engine==1) dense.reset(); else if(engine==2) hd.reset(); else diffuse.reset(); }
+    // Selects the late-field engine; a change crossfades over ~80 ms (the new engine starts from silence).
+    std::array<float,2> lateField(float x,const SceneControls& p) noexcept {
+        const int target=std::clamp(p.reverbEngine,0,2);
+        if(target!=activeEngine && fadeLeft==0) {
+            prevEngine=activeEngine; activeEngine=target; fadeLeft=fadeLen;
+            resetEngine(activeEngine); applyLateParams(activeEngine);
+        }
+        auto out=runEngine(activeEngine,x);
+        if(fadeLeft>0) {
+            const auto old=runEngine(prevEngine,x);
+            const float w=static_cast<float>(fadeLeft)/static_cast<float>(fadeLen);
+            out[0]=out[0]*(1.f-w)+old[0]*w; out[1]=out[1]*(1.f-w)+old[1]*w;
+            if(--fadeLeft==0) resetEngine(prevEngine);
+        }
+        return out;
     }
 private:
     float nextNoise() noexcept {
@@ -422,6 +475,11 @@ private:
     std::array<DelayLine,2> direct, reflections;
     ThroatTexture throat;
     skellcore::FDNReverb diffuse;
+    afar::BandFDN<8> dense;
+    afar::BandFDN<16> hd;
+    int activeEngine=0, prevEngine=0, fadeLen=3840, fadeLeft=0;
+    float lateLowRt=2.5f, lateHighRt=1.2f;
+    bool lateOpen=false;
     skellcore::TruePeakLimiter limiter;
     static constexpr float kCeilingLin=.8912509f; // -1 dBFS, matches limiter.setCeilingDb(-1.f)
     std::array<float,2> sourceLow {}, directLow {}, micLow {}, micHigh {};

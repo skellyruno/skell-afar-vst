@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include "dsp/SceneDSP.h"
+#include "dsp/WalkMotion.h"
 
 class SkellAfarAudioProcessor final : public juce::AudioProcessor {
 public:
@@ -39,7 +40,8 @@ private:
     // The distance parameter is logarithmic; smoothing in metres produces a harsh
     // near-field sweep. Multiplicative smoothing tracks musical distance instead.
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> distanceSmooth;
-    double sampleRateHz=48000.,walkBeat=0.;
+    afar::WalkMotion walkMotion;
+    double sampleRateHz=48000.;
     int lastScene=-1;
     bool wasPlaying=false;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAfarAudioProcessor)

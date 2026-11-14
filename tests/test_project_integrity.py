@@ -33,8 +33,17 @@ assert (root/'.github/workflows/build-windows.yml').is_file()
 assert (root/'.github/workflows/headless-real-core.yml').is_file()
 assert 'SKELL_AFAR_REAL_SKELLCORE_DIR' in cmake and cmake.count('${AFAR_CORE_INC}')>=5
 assert 'kCeilingLin' in (root/'Source/dsp/SceneDSP.h').read_text()
-assert 'VERSION 0.5.4' in cmake and 'version `0.5.4`' in (root/'README.md').read_text()
+assert 'VERSION 0.5.5' in cmake and 'version `0.5.4`' in (root/'README.md').read_text()
 print('PASS: 20 metadata spaces, 20 covers, 45 preset declaration, dependency pin, parameter declarations, CI config')
 
 assert 'SkellCoreTourStyle' in cmake and 'GuidedTourController' in editor
 assert 'addAndMakeVisible(detail)' in editor
+
+# v0.5.5 DSP regression coverage and no-auto-preset invariant.
+assert 'NO PRESET' in editor and 'NO PRESET' in processor
+assert 'SkellAfarWalkMotion' in cmake and 'SkellAfarStartupArrival' in cmake
+assert 'Reverb_engine' in cmake and 'reverbEngine' in processor
+assert (root/'Source/dsp/BandFDN.h').is_file()
+assert (root/'Source/dsp/WalkMotion.h').is_file()
+assert (root/'tests/test_walk_motion.cpp').is_file()
+assert (root/'tests/test_startup_and_arrival.cpp').is_file()

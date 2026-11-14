@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkellAfar VERSION 0.5.4 LANGUAGES C CXX)
+project(SkellAfar VERSION 0.5.5 LANGUAGES C CXX)
 
 include(FetchContent)
 set(SKELLCORE_REV "3306ad495c93e062e39b8abbf079534b0b53da4e" CACHE STRING "Immutable SkellCore template revision")
@@ -37,7 +37,14 @@ if(SKELL_AFAR_BUILD_HEADLESS_TESTS)
   target_compile_features(SkellAfarLoudnessCharacter PRIVATE cxx_std_17)
   target_include_directories(SkellAfarLoudnessCharacter PRIVATE ${AFAR_CORE_INC})
   add_test(NAME SkellAfarLoudnessCharacter COMMAND SkellAfarLoudnessCharacter)
-  foreach(extra_test Onset Fuzz Latency_ceiling)
+  add_executable(SkellAfarStartupArrival tests/test_startup_and_arrival.cpp)
+  target_compile_features(SkellAfarStartupArrival PRIVATE cxx_std_17)
+  target_include_directories(SkellAfarStartupArrival PRIVATE ${AFAR_CORE_INC})
+  add_test(NAME SkellAfarStartupArrival COMMAND SkellAfarStartupArrival)
+  add_executable(SkellAfarWalkMotion tests/test_walk_motion.cpp)
+  target_compile_features(SkellAfarWalkMotion PRIVATE cxx_std_17)
+  add_test(NAME SkellAfarWalkMotion COMMAND SkellAfarWalkMotion)
+  foreach(extra_test Onset Fuzz Latency_ceiling Reverb_engine)
     string(TOLOWER ${extra_test} extra_lower)
     add_executable(SkellAfar${extra_test} tests/test_${extra_lower}.cpp)
     target_compile_features(SkellAfar${extra_test} PRIVATE cxx_std_17)
@@ -86,7 +93,7 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
   target_sources(SkellAfar PRIVATE
     Source/PluginProcessor.cpp Source/PluginProcessor.h
     Source/PluginEditor.cpp Source/PluginEditor.h
-    Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/ThroatTexture.h Source/dsp/RoomCharacter.h
+    Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/ThroatTexture.h Source/dsp/RoomCharacter.h Source/dsp/BandFDN.h Source/dsp/WalkMotion.h
     Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Controls.h Source/ui/DetailPanel.h)
   target_include_directories(SkellAfar BEFORE PRIVATE
     "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")

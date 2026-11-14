@@ -1,6 +1,6 @@
 # Skell-Afar — FEEL THE DISTANCE
 
-**Skell-Afar v0.5.4 source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 20 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
+**Skell-Afar v0.5.5 DSP source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 20 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
 
 **Status: source prototype.** v0.3 passed Windows (MSVC) and macOS (AppleClang) CI builds with 4/4 headless tests (CI run 2026-11-07); everything since (v0.3.1 to v0.5.4: Level Match, 20 spaces, ambience beds, MORE panel, skeleton stage, 8 headless tests) is pending a fresh CI run and has only been compile-checked against a JUCE mock. The scene smoke/stress tests use a clearly labeled SkellCore stand-in. FL Studio runtime behaviour, subjective audio quality and CPU cost are **not yet verified**. Do not treat it as an industry-ready or physically validated acoustic simulator. No external recordings or impulse responses are included.
 
@@ -140,3 +140,13 @@ The headless tests were originally written against a behavioural stub (`tests/st
 ## Repository integration notes (v0.5.4)
 
 The existing SkellCore Guided Tour and actual-JUCE screenshot runner are preserved from the GitHub repository. The v0.5.4 source ZIP did not include those features. The advanced MORE panel must remain mounted as a JUCE child component to be visible. Scene cards are deterministically reproducible byte-for-byte with Pillow 12.3.0 using `python tools/generate_assets.py`; the generated PNGs should be checked in after review. Validation against Windows VST3, real SkellCore and FL Studio is still required.
+
+## v0.5.5 DSP behavior correction (2026-11-14)
+
+- **Quiet start:** new plugin instances use -34 dB ambience by default (instead of -20 dB), and the procedural master bed gain is 0.22 rather than 0.375 (about 4.6 dB quieter at existing saved preset settings). The user can still raise ambience or individual beds at will.
+- **No preset at startup:** new instances display NO PRESET. The 45 factory sounds are unchanged and still selectable. Existing saved preset names and all APVTS parameter IDs remain intact. A default scene is not equivalent to a loaded preset.
+- **Vocal delay:** with BEAT ALIGNED on (default), the direct voice is on time apart from reported limiter latency. At extreme distances a subtle direct anchor remains audible. When physical arrival delay is deliberately enabled, direct, early and late paths all receive the propagation offset; formerly room effects could precede the source.
+- **Walk:** five cyclic distance paths now return smoothly instead of jumping at the phase wrap. Walk begins at the start of the chosen path when enabled, glides in/out, tracks host BPM (120 BPM fallback) and can advance while transport PPQ is frozen as long as the host processes audio. Tempo is synced, but movement is deliberately relative to the enable moment rather than absolute host PPQ.
+- **Validation:** local GCC 14.2 C++17 Release headless **12/12 tests passed** with the labeled test-only SkellCore stub. Across 20 scenes, worst default idle ambience was -65.12 dBFS RMS. At 48 kHz / 120 m, first detected transient was sample 1034 in beat-aligned mode and 17827 with physical arrival; limiter reports 34 samples. CPU benchmark (Linux -O3 test stub, 48 kHz stereo, 20 scenes) averaged ~2.44% / 2.50% / 2.74% of one core for Standard / Dense / HD, respectively. This does **not** validate real Windows VST3 CPU, FL Studio latency, or real SkellCore behavior.
+
+The existing Guided Tour and editor source were intentionally preserved; no new simple-mode UI is part of this DSP-only PR. Windows JUCE builds, actual-host audio A/B, session/automation/preset recall, plugin delay compensation and real-SkellCore sanitizer checks remain release gates.
