@@ -1,4 +1,5 @@
 #pragma once
+#define SKELLCORE_TEST_STUB 1   // lets tests tell the behavioural stub from the real SkellCore
 // Test-only stand-ins for the pinned SkellCore dependency; intentionally NOT linked into release builds.
 // They are behavioural models, not the real DSP: a 4-line Hadamard FDN with per-line RT60 decay and
 // damping, and a lookahead peak limiter that guarantees its ceiling and reports its latency. They let the

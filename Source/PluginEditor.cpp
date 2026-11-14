@@ -151,7 +151,7 @@ public:
             if(id>=1 && id<=static_cast<int>(factory.size())) loadPreset(factory[static_cast<std::size_t>(id-1)]);
             else if(id>=1000 && id-1000<static_cast<int>(userPresetFiles.size())) loadUserPreset(userPresetFiles[static_cast<std::size_t>(id-1000)]);
         };
-        refreshPresetList(processor.editorState.getProperty("preset","INIT / Natural 3 m").toString());
+        refreshPresetList(processor.editorState.getProperty("preset","NO PRESET").toString());
         prevPreset.setButtonText("<");nextPreset.setButtonText(">");
         addAndMakeVisible(prevPreset);addAndMakeVisible(nextPreset);
         prevPreset.onClick=[this]{stepPreset(-1);};
@@ -449,7 +449,7 @@ private:
             }
         }
         presetList.setText(select,juce::dontSendNotification);
-        if(presetList.getSelectedId()==0 && presetList.getText().isEmpty()) presetList.setSelectedId(1,juce::dontSendNotification);
+        // Leave the preset selection empty until the user explicitly chooses one.
     }
     void stepPreset(int delta) {
         const int n=presetList.getNumItems();
@@ -480,7 +480,7 @@ private:
     }
     void saveCurrentPreset() {
         auto current=presetList.getText();
-        if(current.isEmpty() || current.startsWith("INIT")) current="My Preset";
+        if(current.isEmpty() || current=="NO PRESET" || current.startsWith("INIT")) current="My Preset";
         auto* window=new juce::AlertWindow("Save preset","Name your preset:",juce::MessageBoxIconType::NoIcon,this);
         window->addTextEditor("name",juce::File::createLegalFileName(current));
         window->addButton("Save",1,juce::KeyPress(juce::KeyPress::returnKey));

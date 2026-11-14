@@ -19,7 +19,7 @@ static afar::SceneControls randomControls(std::mt19937& g){
     p.occlusion=urand(g,0,1);p.throatTexture=urand(g,0,1);p.size=urand(g,.5f,2.f);p.ambienceDb=urand(g,-60,0);
     p.presence=urand(g,0,1);p.width=urand(g,0,2);p.mix=urand(g,0,1);p.outputDb=urand(g,-24,24);
     p.temperature=urand(g,-20,50);p.humidity=urand(g,0,100);p.absorption=urand(g,0,1);p.levelMatch=urand(g,0,1);
-    p.scene=int(g()%afar::spaces.size());p.recordedAs=int(g()%5);p.occlusionType=int(g()%6);p.micType=int(g()%8);p.micStereo=int(g()%4);
+    p.scene=int(g()%afar::spaces.size());p.recordedAs=int(g()%5);p.occlusionType=int(g()%6);p.reverbEngine=int(g()%3);p.micType=int(g()%8);p.micStereo=int(g()%4);
     p.removeDelay=g()&1;p.bypassEffort=g()&1;p.muteAmbience=(g()%5)==0;p.ambienceDuck=g()&1;p.delta=(g()%6)==0;
     for(auto& b:p.beds)b=urand(g,-60,12);
     return p;
