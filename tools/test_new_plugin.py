@@ -10,19 +10,14 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 class GeneratorTests(unittest.TestCase):
-    def test_create(self):
+    def test_plugin_checkout_rejected(self):
+        # This repository contains Afar-specific DSP. Copying it as a quickstart
+        # would produce invalid dependent plugins, so direct users upstream.
         with tempfile.TemporaryDirectory() as root:
             dest = Path(root) / "skell-compressor"
-            module.make_project("Skell Compressor", dest, "SC01")
-            self.assertIn("SkellCore::DSP SkellCore::UI", (dest / "CMakeLists.txt").read_text())
-            self.assertIn('PLUGIN_CODE SC01', (dest / "CMakeLists.txt").read_text())
-            self.assertIn('audio.skell.skellcompressor', (dest / "CMakeLists.txt").read_text())
-            self.assertIn(module.DEFAULT_REV, (dest / "CMakeLists.txt").read_text())
-            self.assertIn("SkellCompressorAudioProcessor", (dest / "Source" / "PluginProcessor.cpp").read_text())
-            self.assertTrue((dest / ".github/workflows/build.yml").exists())
-            self.assertFalse((dest / "SkellCore").exists())
-            with self.assertRaises(FileExistsError):
+            with self.assertRaisesRegex(FileNotFoundError, "shared SkellCore template checkout"):
                 module.make_project("Skell Compressor", dest, "SC01")
+            self.assertFalse(dest.exists())
     def test_invalid_identity(self):
         with tempfile.TemporaryDirectory() as root:
             dest = Path(root) / "bad"

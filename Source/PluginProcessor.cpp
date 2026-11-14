@@ -32,7 +32,8 @@ Layout SkellAfarAudioProcessor::createLayout() {
     b(l,"power","Power",true);
     c(l,"space","Space", {"Tunnel","Sewer","Subway Platform","Cave","Cellar / Bunker",
         "Graveyard","Forest","Canyon / Valley","Open Field","City Alley","Parking Garage",
-        "Stairwell","Cathedral","Empty Pool","Warehouse"},5);
+        "Stairwell","Cathedral","Empty Pool","Warehouse","Bathroom Tile","Crypt","Elevator Shaft",
+        "Snowfield","Arena"},5);
     f(l,"effort","Effort",0.f,1.f,.5f);
     f(l,"throatTexture","Throat Texture",0.f,1.f,0.f);
     const auto logRange=juce::NormalisableRange<float>(.05f,200.f,
@@ -58,6 +59,8 @@ Layout SkellAfarAudioProcessor::createLayout() {
     c(l,"walkPath","Walk Path",{"Approach","Retreat","Pass By","Pacing","Run Away"},0);
     f(l,"walkLength","Walk Length (bars)",1.f,16.f,4.f,1.f);
     b(l,"walkSync","Walk Sync",true);
+    b(l,"levelMatch","Level Match",true);
+    f(l,"levelMatchAmount","Level Match Amount",0.f,1.f,.85f);
     f(l,"walkScale","Walk Scale",0.1f,2.f,1.f);
     for (int i=1;i<=8;++i) {
         const auto id="bed"+juce::String(i)+"_level";
@@ -106,7 +109,8 @@ void SkellAfarAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce
     afar::SceneControls s;
     s.throatTexture=get("throatTexture");
     s.angle=get("angle");s.occlusion=get("occlusionAmount");s.occlusionType=static_cast<int>(get("occlusionType"));
-    s.size=get("size");s.ambienceDb=get("ambience");s.presence=get("presenceHold");s.width=get("width");
+    s.size=get("size");s.ambienceDb=get("ambience");s.presence=get("presenceHold");
+    s.levelMatch=get("levelMatch")>.5f ? get("levelMatchAmount") : 0.f;s.width=get("width");
     s.recordedAs=static_cast<int>(get("recordedAs"));
     s.micType=static_cast<int>(get("micType"));s.micStereo=static_cast<int>(get("micStereo"));
     s.outputDb=get("output");s.absorption=get("airAbsorption");
@@ -114,15 +118,13 @@ void SkellAfarAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce
     s.removeDelay=get("removeDelay")>.5f;s.bypassEffort=get("bypassEffort")>.5f;
     s.ambienceDuck=get("ambienceDuck")>.5f;s.muteAmbience=get("muteAmbience")>.5f;
     s.delta=get("delta")>.5f;
-    s.bedGain=0.f;
     constexpr const char* bedIDs[] {"bed1_level","bed2_level","bed3_level","bed4_level",
                                     "bed5_level","bed6_level","bed7_level","bed8_level"};
     for (int i=0;i<8;++i) {
         s.beds[static_cast<std::size_t>(i)]=get(bedIDs[i]);
-        s.bedGain+=afar::dbGain(s.beds[static_cast<std::size_t>(i)]+20.f)/8.f;
     }
     engine.setSeed(static_cast<std::uint32_t>(get("seed")));
-    const int scene=std::clamp(static_cast<int>(get("space")),0,14);
+    const int scene=std::clamp(static_cast<int>(get("space")),0,static_cast<int>(afar::spaces.size())-1);
     if (scene!=lastScene) { engine.setScene(scene);lastScene=scene; }
     effortSmooth.setTargetValue(get("effort"));
     distanceSmooth.setTargetValue(get("distance"));
@@ -130,13 +132,17 @@ void SkellAfarAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce
     bypassSmooth.setTargetValue(get("power")>.5f ? 0.f:1.f);
     // New JUCE transport API; fallback is a continuously running 120 BPM clock.
     double bpm=120.0, beats=walkBeat;
-    bool hostPosition=false;
+    bool hostPosition=false,playing=false;
     if (auto* playhead=getPlayHead()) {
         if (const auto position=playhead->getPosition()) {
+            playing=position->getIsPlaying();
             if (auto v=position->getBpm()) bpm=std::clamp(*v,20.0,400.0);
             if (auto v=position->getPpqPosition()) {beats=*v;hostPosition=true;}
         }
     }
+    // LOCK SEED: restart the ambience from the seed whenever playback starts, so every pass is identical.
+    if (get("seedLock")>.5f && playing && !wasPlaying) engine.restartAmbience();
+    wasPlaying=playing;
     const bool walkOn=get("walkOn")>.5f;
     const int walkPath=static_cast<int>(get("walkPath"));
     const float walkLength=std::max(1.f,get("walkLength"));

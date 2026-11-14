@@ -33,17 +33,17 @@ public:
         setupKnob(air[0],"TEMP","temperature",Kind::Temp,"Air temperature: changes the speed of sound and the arrival delay.");
         setupKnob(air[1],"HUMIDITY","humidity",Kind::Humidity,"Relative humidity: changes high-frequency air absorption.");
         setupKnob(air[2],"ABSORPTION","airAbsorption",Kind::Absorption,"How strongly distance rolls off the highs (0 = none).");
-        setupKnob(seed,"SEED","seed",Kind::Seed,"Ambience noise seed. With LOCK SEED on, renders repeat exactly.");
+        setupKnob(seed,"SEED","seed",Kind::Seed,"Seed for the ambience noise.");
         setupKnob(walkScale,"WALK SCALE","walkScale",Kind::Scale,"Scales how far the Walk path travels.");
+        setupKnob(matchAmount,"MATCH AMT","levelMatchAmount",Kind::Absorption,"How much LEVEL MATCH keeps the voice at your input loudness (100% = fully matched, lower lets distance and effort change the volume).");
         setupCombo(occlusion,{"OPEN","DOORWAY","WALL","THICK WALL","FOLIAGE","WATER"},"occlusionType","Material between voice and mic (used with the OCCLUSION knob).");
         setupCombo(micStereo,{"MONO","XY","ORTF","BINAURAL"},"micStereo","Stereo pickup pattern of the virtual microphone.");
-        setupCombo(quality,{"ECO","NORMAL","HIGH"},"quality","Engine quality. Applied when the plugin is (re)initialised by the host.");
-        setupCombo(oversampling,{"OFF","2X","4X"},"oversampling","Reserved: not yet used by the DSP.");
+        setupCombo(quality,{"ECO","NORMAL","HIGH"},"quality","ECO uses the lower-latency limiter mode. Applied when the host (re)initialises the plugin.");
         setupToggle(delta,"DELTA","delta","Listen to only what the processing removes (difference signal).");
         setupToggle(bypassEffort,"BYPASS EFFORT TIMBRE","bypassEffort","Keep the Effort slider's level/distance behaviour but skip its timbre changes.");
         setupToggle(walkSync,"WALK SYNC","walkSync","Follow the host's beat position. Off: free-running from playback start.");
         setupToggle(duck,"DUCK AMB UNDER VOICE","ambienceDuck","Lower ambience while the voice is loud.");
-        setupToggle(lockSeed,"LOCK SEED","seedLock","Keep the same ambience noise on every render.");
+        setupToggle(lockSeed,"LOCK SEED","seedLock","Restart the ambience from the seed every time playback starts, so every pass and render is identical.");
         closeButton.setButtonText("CLOSE");
         addAndMakeVisible(closeButton);
         closeButton.onClick=[this]{ if(onClose) onClose(); };
@@ -64,12 +64,12 @@ public:
         g.drawFittedText("AUTO follows the scene. Turn a bed up to add it to any space, down to trim it; OFF mutes it. Master level is the AMBIENCE knob.",
                          28,204,480,30,juce::Justification::topLeft,2);
         g.drawFittedText("Temperature and humidity set air absorption and sound speed.",540,204,210,30,juce::Justification::topLeft,2);
-        const char* captions[4] {"OCCLUSION MATERIAL","MIC STEREO PATTERN","QUALITY","OVERSAMPLING"};
-        const int xs[4] {28,210,392,574};
-        for(int i=0;i<4;++i) g.drawText(captions[i],xs[i],290,170,12,juce::Justification::centredLeft);
-        g.drawFittedText("QUALITY and OVERSAMPLING are reserved: the scene engine has no oversampled stage yet "
-                         "(Throat Texture already uses anti-aliased saturation). SEED + LOCK SEED make ambience renders repeat exactly.",
-                         350,384,390,64,juce::Justification::topLeft,5);
+        const char* captions[3] {"OCCLUSION MATERIAL","MIC STEREO PATTERN","LIMITER QUALITY"};
+        const int xs[3] {28,210,392};
+        for(int i=0;i<3;++i) g.drawText(captions[i],xs[i],290,170,12,juce::Justification::centredLeft);
+        g.drawFittedText("LIMITER QUALITY sets how finely the limiter checks peaks (Eco uses less CPU); latency is the same. "
+                         "Throat Texture uses anti-aliased saturation, so no oversampling is needed. LOCK SEED restarts the ambience from SEED when playback starts.",
+                         392,384,350,64,juce::Justification::topLeft,5);
     }
 
     void resized() override {
@@ -77,10 +77,10 @@ public:
         for(std::size_t i=0;i<beds.size();++i) place(beds[i],28+static_cast<int>(i)*60,86,58);
         for(std::size_t i=0;i<air.size();++i) place(air[i],538+static_cast<int>(i)*72,86,68);
         occlusion.setBounds(28,304,170,28);micStereo.setBounds(210,304,170,28);
-        quality.setBounds(392,304,170,28);oversampling.setBounds(574,304,170,28);
+        quality.setBounds(392,304,170,28);
         delta.setBounds(28,342,150,24);bypassEffort.setBounds(190,342,200,24);
         walkSync.setBounds(400,342,130,24);duck.setBounds(540,342,200,24);
-        place(seed,28,376,64);lockSeed.setBounds(100,398,130,24);place(walkScale,260,376,64);
+        place(seed,28,376,64);lockSeed.setBounds(100,398,130,24);place(walkScale,236,376,64);place(matchAmount,304,376,64);
     }
 
 private:
@@ -97,7 +97,7 @@ private:
         k.slider.setTooltip(tip);
         k.label.setText(title,juce::dontSendNotification);
         k.label.setJustificationType(juce::Justification::centred);
-        k.label.setFont(juce::Font(juce::FontOptions(9.2f)));
+        k.label.setFont(juce::Font(juce::FontOptions(9.6f)));
         k.label.setColour(juce::Label::textColourId,Theme::muted);
         addAndMakeVisible(k.slider);addAndMakeVisible(k.label);
         sliderAttachments.emplace_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.parameters,id,k.slider));
@@ -147,8 +147,8 @@ private:
     SkellAfarAudioProcessor& processor;
     std::array<Knob,8> beds;
     std::array<Knob,3> air;
-    Knob seed,walkScale;
-    juce::ComboBox occlusion,micStereo,quality,oversampling;
+    Knob seed,walkScale,matchAmount;
+    juce::ComboBox occlusion,micStereo,quality;
     juce::ToggleButton delta,bypassEffort,walkSync,duck,lockSeed;
     juce::TextButton closeButton;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;

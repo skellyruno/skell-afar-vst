@@ -1,3 +1,4 @@
+#include "force_asserts.h"
 #include "../Source/dsp/SceneDSP.h"
 #include <algorithm>
 #include <cassert>

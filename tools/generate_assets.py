@@ -34,9 +34,9 @@ logo=Image.new('RGBA',(96,96),(0,0,0,0)); ld=ImageDraw.Draw(logo,'RGBA')
 ld.ellipse((4,4,92,92),outline=(44,185,60,120),width=3)
 skull_draw(ld,48,44,1.32,(110,255,125,250))
 logo.save(p/'logo_skull.png')
-# 16 original scene cards, abstract geometric silhouettes, no photographic assets.
-palettes=[(24,62,54),(19,66,69),(36,61,75),(37,61,54),(34,47,51),(21,46,45),(23,49,38),(62,45,43),(29,50,48),(44,54,49),(35,50,57),(30,44,55),(52,51,56),(35,60,61),(47,52,54),(30,62,39)]
-for idx in range(16):
+# 20 original scene cards, abstract geometric silhouettes, no photographic assets.
+palettes=[(24,62,54),(19,66,69),(36,61,75),(37,61,54),(34,47,51),(21,46,45),(23,49,38),(62,45,43),(29,50,48),(44,54,49),(35,50,57),(30,44,55),(52,51,56),(35,60,61),(47,52,54),(52,66,70),(30,32,44),(58,60,64),(74,82,88),(50,44,58)]
+for idx in range(20):
     img=Image.new('RGB',(480,200)); px=img.load()
     base=palettes[idx]
     for y in range(200):
@@ -59,8 +59,19 @@ for idx in range(16):
             di.polygon([(k*130,180),(k*130+80,35),(k*130+155,180)],outline=(240,155,105,70))
     elif idx==8:
         di.line((0,150,480,145),fill=(190,230,190,65),width=2)
-    if idx!=15:
-        skull_draw(di,402,102,1.08,(106,253,123,105))
-    else:
-        skull_draw(di,240,95,1.3,(106,253,123,155))
+    elif idx==15:   # bathroom tile grid
+        for gx in range(0,480,32): di.line((gx,0,gx,200),fill=(190,235,235,55),width=1)
+        for gy in range(0,200,32): di.line((0,gy,480,gy),fill=(190,235,235,55),width=1)
+    elif idx==16:   # crypt: repeating dark arches
+        for k in range(6):
+            x0=20+k*78; di.arc((x0,40,x0+64,150),180,360,fill=(150,160,210,70),width=3); di.line((x0,95,x0,200),fill=(150,160,210,60),width=3); di.line((x0+64,95,x0+64,200),fill=(150,160,210,60),width=3)
+    elif idx==17:   # elevator shaft: tall rails and rungs
+        for gx in (150,210,270,330): di.line((gx,0,gx,200),fill=(210,220,230,70),width=3)
+        for gy in range(10,200,24): di.line((150,gy,330,gy),fill=(210,220,230,35),width=1)
+    elif idx==18:   # snowfield: soft horizon and flakes
+        di.line((0,130,480,126),fill=(235,245,250,80),width=2)
+        for k in range(70): fx=rnd.randrange(0,480); fy=rnd.randrange(0,200); di.ellipse((fx,fy,fx+3,fy+3),fill=(240,248,255,90))
+    elif idx==19:   # arena: concentric seating rings
+        for k in range(1,8): di.ellipse((240-k*34,100-k*14,240+k*34,100+k*14),outline=(215,170,235,60),width=2)
+    skull_draw(di,402,102,1.08,(106,253,123,105))
     img.save(p/f'space_{idx:02d}.png',optimize=True)

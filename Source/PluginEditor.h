@@ -1,22 +1,20 @@
 #pragma once
 #include <JuceHeader.h>
 #include <memory>
+#include <SkellCore/GuidedTour.h>
 #include "PluginProcessor.h"
 #include "ui/Controls.h"
 #include "ui/SpaceBrowser.h"
 #include "ui/SceneView.h"
-#include <SkellCore/GuidedTour.h>
 
 class SkellAfarAudioProcessorEditor final : public juce::AudioProcessorEditor {
 public:
     explicit SkellAfarAudioProcessorEditor(SkellAfarAudioProcessor&);
     ~SkellAfarAudioProcessorEditor() override;
     void resized() override;
-    void dismissTourForScreenshot() { if(guidedTour)guidedTour->dismiss(); }
-    bool replayTourForScreenshot() {
-        showGuidedTour(false);
-        return guidedTour && guidedTour->isShowing();
-    }
+    // Used by the actual-JUCE renderer, not a mock UI.
+    void dismissTourForScreenshot();
+    bool replayTourForScreenshot();
 private:
     class Surface;
     SkellAfarAudioProcessor& processor;

@@ -41,5 +41,6 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> distanceSmooth;
     double sampleRateHz=48000.,walkBeat=0.;
     int lastScene=-1;
+    bool wasPlaying=false;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAfarAudioProcessor)
 };

@@ -1,0 +1,96 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Elevator Shaft",
+  "category": "indoor",
+  "geometry": {
+    "type": "tall metal tube",
+    "dimensionsMeters": {
+      "width": 2,
+      "length": 2,
+      "height": 40
+    },
+    "openness": false
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "metal",
+      "absorptionOctaveBands125_8k": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.04,
+        0.05
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "metal",
+      "absorptionOctaveBands125_8k": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.04,
+        0.05
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "metal",
+      "absorptionOctaveBands125_8k": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.04,
+        0.05
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "metal",
+      "absorptionOctaveBands125_8k": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.04,
+        0.05
+      ]
+    }
+  ],
+  "scattering": 0.08,
+  "rt60TargetSeconds": 2.4,
+  "reflectionLevel": 0.45,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 20,
+      "gain": 0.45,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": true,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "drone",
+      "levelDb": -30,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "vertical flutter",
+    "metal ring"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.4: SceneModel.h spaces + characters)"
+}

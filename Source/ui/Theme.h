@@ -16,10 +16,6 @@ inline const juce::Colour violet {0xff6a4dff};
 inline constexpr int designW=1100,designH=700;
 inline constexpr int topBar=56;
 inline constexpr int browserX=20,browserY=72,browserW=280,browserH=568;
-inline constexpr int sceneX=320,sceneY=72,sceneW=480,sceneH=332;
-inline constexpr int padX=820,padY=72,padW=260,padH=260;
-inline constexpr int walkX=820,walkY=346,walkW=260,walkH=215;
-inline constexpr int lowerX=314,lowerY=575,lowerW=774,lowerH=115;
 }
 inline void panel(juce::Graphics& g,juce::Rectangle<float> r,float corner=10.f) {
     juce::ColourGradient fill(juce::Colour(0xff182024),r.getX(),r.getY(),Theme::panel.darker(.3f),r.getX(),r.getBottom(),false);

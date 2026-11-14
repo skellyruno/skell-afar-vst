@@ -1,4 +1,5 @@
 // Independent ambience beds + Presence Hold. Uses the test-only SkellCore stub (see tests/stub).
+#include "force_asserts.h"
 #include "../Source/dsp/SceneDSP.h"
 #include <cassert>
 #include <cmath>
@@ -42,6 +43,14 @@ int main(){
     assert(rTrim/rNative>.15 && rTrim/rNative<.35);   // about -12 dB (0.25)
     // determinism with the same seed
     assert(ambienceRender(5,p,20000)==ambienceRender(5,p,20000));
+    {   // restartAmbience() (LOCK SEED) must reproduce the same ambience from the same state
+        afar::SceneDSP e;e.prepare(48000.,2,0);e.setSeed(777);e.setScene(5);
+        auto run=[&]{std::vector<float> o;for(int i=0;i<24000;++i)o.push_back(e.processFrame({0.f,0.f},p,1.f,0.f).left);return o;};
+        const auto first=run();run();e.restartAmbience();
+        const auto again=run();
+        // output smoothers converge within ~20 ms; after that the restarted ambience must be bit-identical
+        for(size_t i=4800;i<first.size();++i) assert(first[i]==again[i]);
+    }
     // every bed alone is finite, non-silent when raised, and bounded
     for(size_t i=0;i<8;++i){
         afar::SceneControls only=off;only.beds[i]=12.f;

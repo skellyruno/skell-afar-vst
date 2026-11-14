@@ -1,31 +1,31 @@
 # Skell-Afar — FEEL THE DISTANCE
 
-**Skell-Afar v0.4.0 development source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 15 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
+**Skell-Afar v0.5.4 source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 20 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
 
-**Status: source prototype.** The earlier v0.3 passed Windows (MSVC) and macOS (AppleClang) CI builds with 4/4 headless tests (CI run 2026-11-07). The v0.4.0 package passes all five local headless C++ tests and its project-integrity check; fresh Windows/macOS full plugin builds are still required. The scene smoke/stress tests use a clearly labeled SkellCore stand-in. FL Studio runtime behaviour, subjective audio quality and CPU cost are **not yet verified**. Do not treat it as an industry-ready or physically validated acoustic simulator. No external recordings or impulse responses are included.
+**Status: source prototype.** v0.3 passed Windows (MSVC) and macOS (AppleClang) CI builds with 4/4 headless tests (CI run 2026-11-07); everything since (v0.3.1 to v0.5.4: Level Match, 20 spaces, ambience beds, MORE panel, skeleton stage, 8 headless tests) is pending a fresh CI run and has only been compile-checked against a JUCE mock. The scene smoke/stress tests use a clearly labeled SkellCore stand-in. FL Studio runtime behaviour, subjective audio quality and CPU cost are **not yet verified**. Do not treat it as an industry-ready or physically validated acoustic simulator. No external recordings or impulse responses are included.
 
-## What works in v0.2
+## What works (cumulative, v0.5.4)
 
 - Stereo or mono-in/stereo-output JUCE effect, VST3 + standalone, DAW automation via AudioProcessorValueTreeState, state save/restore.
 - **One THROAT TEXTURE macro (0–100%)**: CLEAN (0%), AIRY (~33%), RASPY (~67%), GRITTY (100%), with continuous interpolation. Implemented *before* propagation/space/microphone processing. Voice-envelope-gated air/noise and mid-band selective saturation (240 Hz–3.1 kHz) approximate vocal texture without clipping the whole reverb/ambience chain. It is **not** an exact glottal fry/growl or true source-filter vocal resynthesizer. At zero the module is an identity pass-through, and on silence it produces no added noise. v0.3 adds smoother inter-stage morph derivatives, limited-band harmonic smoothing and a high-band consonant guard to reduce harshness on sibilants; these are creative approximations, not authentic glottal/source-filter resynthesis. The one knob is APVTS automatable, presets default to zero, and it is presented prominently in the lower strip.
-- EFFORT and distance sliders with a two-axis scene pad; geometry browser for 15 factory spaces, with search/category filter; custom vector scene diagrams and acoustic readouts. The scene view supports drag gestures for both distance (horizontal) and angle (vertical); the source-marker ripple is animated.
+- EFFORT and distance sliders with a two-axis scene pad; geometry browser for 20 factory spaces, with search/category filter; custom vector scene diagrams and acoustic readouts. The scene view supports drag gestures for both distance (horizontal) and angle (vertical); the source-marker ripple is animated.
 - Logarithmic distance: 0.05–200 m. Approximate direct path 1/r level, speed-of-sound arrival delay (toggle off for beat alignment), **multiplicatively smoothed distance** to avoid harsh near-field sweeps, air roll-off, directivity and occlusion.
 - Three original early reflection taps and SkellCore's **four-line** FDN diffusion; late diffuse level does not scale with direct-path distance. Smooth *parameter interpolation* over 300 ms for scene changes (not a full dual-scene DSP crossfade). v0.3 recalculates expensive acoustic coefficients every 32 samples and smooths their transitions per sample; this is an algorithmic optimization, not a benchmarked CPU claim.
-- Procedural environment noise generated from a deterministic seed; synthetic wind, room noise, water with sparse resonant drip events, traffic-like low rumble, insects and forest rustle. The eight ambience-bed parameters currently apply as an aggregate gain, not separate per-bed processing.
+- Procedural environment noise generated from a deterministic seed; synthetic wind, room noise, water with sparse resonant drip events, traffic-like low rumble, insects and forest rustle. The eight ambience beds are independent (see v0.5 changes below).
 - Approximate whisper/shout coloring: gentle spectral smoothing/breath or soft saturation/presence, *not* pitch-synchronous excitation replacement or authentic formant shifting. **BEST RESULTS:** Natural spoken/sung source and only one effort-stage deviation from RECORDED AS.
 - Microphone presets approximate device bandlimit/distortion with a one-pole filter and light saturation, plus stereo field width; NOT calibrated to real recorders.
 - Tempo-following Walk presets (Approach / Retreat / Pass By / Pacing / Run Away), with 120 BPM fallback. Physical time-of-flight Doppler is only present when arrival delay is enabled; there is not a separate validated Doppler pitch model.
 - SkellCore `TruePeakLimiter` as the final stage, at -1 dBFS ceiling. It uses intersample interpolation but **is not BS.1770 certified**. Its reported latency is always active, including when bypassed. The bypass smoothly blends dry/wet over 10 ms *before* that limiter.
-- Original artwork created specifically for this project; static 1100×700 backdrop, skull logo, 16 abstract scene cards loaded via `juce_add_binary_data`.
-- 24 factory scene/effort presets; named user presets saved to the user app-data folder and listed in the preset menu (prev/next arrows); two-slot A/B state swap (not persisted), size 75/100/125/150%. v0.3 improves slider contrast, graduated meter/knob styling, active browser tabs, and the compact Throat Texture status readout.
+- Original artwork created specifically for this project; static 1100×700 backdrop, skull logo, 20 abstract scene cards loaded via `juce_add_binary_data`.
+- 45 factory scene/effort presets; named user presets saved to the user app-data folder and listed in the preset menu (prev/next arrows); two-slot A/B state swap (not persisted), size 75/100/125/150%. v0.3 improves slider contrast, graduated meter/knob styling, active browser tabs, and the compact Throat Texture status readout.
 
 ## Not yet implemented (do not advertise as shipped)
 
-The 16-line per-band FDN, waveguide tube geometry, high-order image-source reflections, worker-thread scene solver, true calibrated SPL/air absorption ISO 9613-1, YIN/pYIN + STFT source-filter whispering and formant-aware shouting, procedural event-level mic noise/AGC/bit crushing, intelligibility-targeting dynamic EQ, user scene designer/import/export of `.skellspace`, picture drag-and-drop, gesture recording and arbitrary drawn walk paths, full ambience bed mixer, independent room-stereo microphone patterns, true A/B disk persistence, user-preset browser/import, automated benchmark WAV A/B fixtures and FL Studio host verification are future milestones. The `oversampling`, `quality=High`, and some environment/seed options are placeholders; select Eco/Normal prior to host reinitialization. UI's intelligibility bar is a heuristic, **not** speech-recognition accuracy.
+The 16-line per-band FDN, waveguide tube geometry, high-order image-source reflections, worker-thread scene solver, true calibrated SPL/air absorption ISO 9613-1, YIN/pYIN + STFT source-filter whispering and formant-aware shouting, procedural event-level mic noise/AGC/bit crushing, intelligibility-targeting dynamic EQ, user scene designer/import/export of `.skellspace`, picture drag-and-drop, gesture recording and arbitrary drawn walk paths, independent room-stereo microphone patterns, true A/B disk persistence, user-preset browser/import, automated benchmark WAV A/B fixtures and FL Studio host verification are future milestones. The `oversampling`, `quality=High`, and some environment/seed options are placeholders; select Eco/Normal prior to host reinitialization. UI's intelligibility bar is a heuristic, **not** speech-recognition accuracy.
 
 ## SkellCore provenance / reproducibility
 
-The template repo is `https://github.com/skellyruno/skell-vst-template` and **SkellCore is pinned to commit** `e701a6a1e05d923f61c17275609c95122d456223` in `CMakeLists.txt`. This plugin *does not copy* SkellCore's DSP sources; CMake fetches its `SkellCore` subdirectory as a dependency. Code links `SkellCore::DSP`, `SkellCore::UI`, and uses `skellcore::FDNReverb` plus `skellcore::TruePeakLimiter`; headers from `SkellCore::UI` remain available for further shared components. Respect licenses and provenance noted in SkellCore's `SOURCE_PROVENANCE.md`.
+The template repo is `https://github.com/skellyruno/skell-vst-template` and **SkellCore is pinned to commit** `3306ad495c93e062e39b8abbf079534b0b53da4e` in `CMakeLists.txt`. This plugin *does not copy* SkellCore's DSP sources; CMake fetches its `SkellCore` subdirectory as a dependency. Code links `SkellCore::DSP`, `SkellCore::UI`, and uses `skellcore::FDNReverb` plus `skellcore::TruePeakLimiter`; headers from `SkellCore::UI` remain available for further shared components. Respect licenses and provenance noted in SkellCore's `SOURCE_PROVENANCE.md`.
 
 ## Build
 
@@ -71,7 +71,7 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 
 ## Scene files
 
-`Assets/Spaces/*.skellspace` include 15 documented, shareable **draft metadata** scenes. Their schema is described in `Assets/Spaces/SCHEMA.md`: geometry, dimensions, material/absorption bands, scattering, openness, echo distances, ambience traits. The current code uses factory scene constants in `Source/dsp/SceneModel.h`; .skellspace file runtime loading and user-defined scene playback are not yet implemented.
+`Assets/Spaces/*.skellspace` include 20 documented, shareable **draft metadata** scenes. Their schema is described in `Assets/Spaces/SCHEMA.md`: geometry, dimensions, material/absorption bands, scattering, openness, echo distances, ambience traits. The current code uses factory scene constants in `Source/dsp/SceneModel.h`; .skellspace file runtime loading and user-defined scene playback are not yet implemented.
 
 ## Planned gates before release
 
@@ -83,7 +83,7 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 
 ## Identity
 
-`audio.skell.afar`, VST3 manufacturer code `SkAu`, plugin code `Afar`, version `0.4.0`. These IDs must stay stable once released. All generated artworks are original. There is no bundled proprietary font: the renderer uses locally available system fonts so no extra font rights are required.
+`audio.skell.afar`, VST3 manufacturer code `SkAu`, plugin code `Afar`, version `0.5.4`. These IDs must stay stable once released. All generated artworks are original. There is no bundled proprietary font: the renderer uses locally available system fonts so no extra font rights are required.
 
 ## Throat Texture QA notes (v0.3)
 
@@ -106,4 +106,37 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 
 **Tests** (headless, run in CI): physics, throat (incl. noise-shaping and ADAA regressions), audio smoke, stress, beds + presence hold. `tests/real_audio_throat.py` checks real recordings.
 
-**Still unverified for v0.4.0:** JUCE compile of the new UI, FL Studio behaviour, subjective sound, CPU benchmarks.
+**Still unverified:** JUCE compile of the new UI, FL Studio behaviour, subjective sound, CPU benchmarks.
+
+## v0.5 changes (pending a fresh Windows/macOS CI run)
+- **Loudness:** new LEVEL MATCH (default on, amount 85%, `levelMatch` / `levelMatchAmount`): the voice + room field is matched to the dry input loudness (measured within 0.6 dB over 100 scene/effort/distance cases; unmatched spread was 55 dB). Ambience beds recalibrated ~8 dB lower, idle ambience is below -40 dBFS in every space. Fixed the ambience bed being almost mono-left. The stereo bed now uses a short decorrelation delay.
+- **Environments:** `RoomCharacter` gives every space its own flutter / resonance / tilt / pre-delay / shimmer / slap echo; far echoes no longer gate off at normal effort. Five new spaces: Bathroom Tile, Crypt, Elevator Shaft, Snowfield, Arena (20 total, covers + `.skellspace` metadata included). A test asserts every space keeps a distinct fingerprint.
+- **Presets:** 45 factory presets that also set angle, occlusion, size, presence and (some) throat texture.
+- **Stage:** the voice is now a walking skeleton; distance is depth, jaw follows level, arms follow effort, drag it directly.
+- **Fix:** potential one-sample heap read in the delay lines when float rounding made the wrapped read position equal the buffer length (found by ASan; present since v0.1).
+- **Known limits:** stub-FDN tests compare spaces relative to each other, not absolute realism; skeleton art, new backdrops and the UI have only been compile-checked against a drawing mock, not rendered in JUCE.
+
+## Verification notes (v0.5)
+- **Tests really assert now.** CI builds tests in Release where `NDEBUG` removed every `assert()`, so earlier headless tests only proved "does not crash". `tests/force_asserts.h` re-enables asserts; every test includes it first. 8 CTest targets: physics, throat, scene smoke, stress, beds + presence, loudness + character, onset/abrupt-change safety, randomized fuzz (60 trials over all parameters, 20 scenes, 22.05-192 kHz, noise/square/impulse/DC/silence/sweep inputs, abrupt jumps every 0.25 s).
+- **Level match safety:** a fast gain ceiling (peak-held input reference, release slower than any RT60) keeps abrupt distance/effort/scene jumps from spiking (worst transition overshoot measured +5.5 dB; was +44.8 dB with only the slow estimator). Measured on real vocals: no added pumping, lower peaks.
+- **Denormals:** `processBlock` uses `juce::ScopedNoDenormals`; the fuzz test mirrors FTZ and requires silence-after-signal to cost no more than normal processing (without FTZ it is ~4x slower, reported for information).
+- **CPU (manual: `tests/bench_cpu.cpp`, test stub FDN/limiter, -O2, 48 kHz stereo):** ~540 ns/frame average over 20 scenes (2.6% of one core), worst ~765 ns/frame (3.7%) with Throat Texture, beds, Presence and Level Match all on. The real SkellCore FDN/limiter add to this. Not yet profiled on a low-end machine.
+- **Visual check without JUCE:** the stage art (20 backdrops, skeleton poses, composed depth stage) was rendered through a recording mock of the JUCE drawing API and inspected as images; layout geometry (overlaps, bounds, text fit) was checked programmatically for the main surface and MORE panel. This is not a substitute for rendering in JUCE.
+- **LOCK SEED** (MORE panel) is now implemented: with it on, the ambience restarts from the seed every time host playback starts (bit-identical after ~20 ms, tested). Before this, the toggle existed but did nothing.
+- Removed dead code (`bedGain`, `ambienceLow`, `setQuality`, `clearPeak`, unused layout constants).
+- The Oversampling parameter (`oversampling`) is kept for saved-state compatibility but has no UI and no effect; Throat Texture uses ADAA instead. Test stubs are now behavioural models (4-line Hadamard FDN, lookahead limiter with reported latency); `test_latency_ceiling` checks latency is identical in bypass / power-off / wet / half-wet and that output never exceeds -1 dBFS.
+- **UI check without JUCE (`tools/ui_check/check.sh`):** compiles `PluginEditor.cpp` / `PluginProcessor.cpp` against a structural JUCE mock (faithful `Graphics` overload sets; found and fixed a duplicate-definition error that would have broken the real build), renders the real editor and the MORE panel off-screen with the real `AfarLookAndFeel` / `paint()` code, and flags text that overflows its box. Stock JUCE widgets (combo, text button) are approximated, fonts are DejaVu, and none of this replaces compiling against real JUCE in CI.
+
+## v0.5.4: verified against the real SkellCore
+The headless tests were originally written against a behavioural stub (`tests/stub/SkellCore/Core.h`). They were re-run against the real SkellCore `Core.h` (FDNReverb, TruePeakLimiter) and found:
+- **Limiter overshoot (fixed):** the SkellCore limiter's release can start while a louder sample is still in its lookahead delay. In 28 of 40 extreme trials the output exceeded -1 dBFS, by up to +1.4 dB (peak 1.044). `SceneDSP` now has a **ceiling guard** after the limiter (`kCeilingLin`, -1 dBFS sample ceiling), and the test passes (worst 0.8913). The limiter itself is unchanged, because SkellCore stays a pinned dependency; a fix there would be the cleaner long-term answer. The guard is a *sample* ceiling, not a true-peak guarantee.
+- **Limiter latency:** the real limiter reports a fixed 3 ms (144 samples at 48 kHz) in both Eco and Standard; the stub's was half that and quality-dependent. The README's 3 ms figure is correct. **LIMITER QUALITY only changes peak-detection accuracy (2x/8-tap vs 4x/16-tap), not latency**; the MORE-panel text that said otherwise is fixed.
+- **Level Match:** with the real FDN the worst matched level change is 3.8 dB (far whispers in small rooms stay slightly quieter than dry); the test limit is now 4.5 dB, set from that measurement.
+- **Real-core test mode:** configure with `-DSKELL_AFAR_REAL_SKELLCORE_DIR=<path to SkellCore folder>` to build the headless tests against the real SkellCore instead of the stub. `.github/workflows/headless-real-core.yml` does this in CI with ASan + UBSan. (Not yet run in CI.)
+- Locally, all 9 headless test programs passed against SkellCore `main` (CMake version 0.6.0) with the ceiling guard; 7 of them also ran clean under ASan + UBSan (the loudness and fuzz tests were too slow to sanitize here and ran without sanitizers). **Unverified:** that this equals the pinned commit `e701a6a…`, and the new CMake option and workflow, because CMake was not available where this was done.
+- **Root-cause fix in SkellCore v0.6.1:** the limiter overshoot is fixed in SkellCore itself (sliding-window-minimum gain with a ramped attack, same latency). The ceiling guard stays as a cheap safety net. Once SkellCore 0.6.1 is pushed, update the pinned commit in `CMakeLists.txt` (and `.github/workflows/headless-real-core.yml` picks it up automatically). Skell-Afar's latency, ceiling, loudness and onset tests were re-run against 0.6.1 and pass.
+
+
+## Repository integration notes (v0.5.4)
+
+The existing SkellCore Guided Tour and actual-JUCE screenshot runner are preserved from the GitHub repository. The v0.5.4 source ZIP did not include those features. The advanced MORE panel must remain mounted as a JUCE child component to be visible. Scene cards are deterministically reproducible byte-for-byte with Pillow 12.3.0 using `python tools/generate_assets.py`; the generated PNGs should be checked in after review. Validation against Windows VST3, real SkellCore and FL Studio is still required.

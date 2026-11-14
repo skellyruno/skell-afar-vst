@@ -1,5 +1,6 @@
 #pragma once
 #include "SceneModel.h"
+#include "RoomCharacter.h"
 #include "ThroatTexture.h"
 #include <SkellCore/Core.h>
 #include <array>
@@ -9,6 +10,21 @@
 
 namespace afar {
 inline float dbGain(float dB) noexcept { return std::pow(10.f, dB * .05f); }
+// Fixed-frequency sine without a transcendental call per sample: complex rotation plus a Newton
+// amplitude correction (stays at unit magnitude indefinitely).
+struct SineOsc {
+    void prepare(double sampleRate,double hz) noexcept {
+        const double w=2.0*3.141592653589793*hz/sampleRate;
+        ds=static_cast<float>(std::sin(w));dc=static_cast<float>(std::cos(w));s=0.f;c=1.f;
+    }
+    float next() noexcept {
+        const float ns=s*dc+c*ds,nc=c*dc-s*ds;
+        const float g=.5f*(3.f-(ns*ns+nc*nc));
+        s=ns*g;c=nc*g;
+        return s;
+    }
+    float s=0.f,c=1.f,ds=0.f,dc=1.f;
+};
 inline float sanitize(float v) noexcept { return std::isfinite(v) ? std::clamp(v, -100.f, 100.f) : 0.f; }
 
 // One fractional-delay ring per channel. prepare() is never called on the audio thread.
@@ -22,7 +38,8 @@ public:
         const float n = static_cast<float>(data.size());
         float p = static_cast<float>(write) - std::clamp(delaySamples, 0.f, n - 3.f);
         if (p < 0.f) p += n;
-        const auto i = static_cast<std::size_t>(p);
+        if (p >= n) p -= n;   // p + n can round up to exactly n in float
+        const auto i = static_cast<std::size_t>(p) < data.size() ? static_cast<std::size_t>(p) : 0;
         const auto j = i+1 == data.size() ? 0 : i+1;
         const float frac = p - static_cast<float>(i);
         return data[i] * (1.f-frac) + data[j]*frac;
@@ -36,10 +53,11 @@ private:
 struct SceneControls {
     float effort = .5f, distance = 3.f, angle = 0.f, occlusion = 0.f, throatTexture = 0.f;
     float size = 1.f, ambienceDb = -24.f, presence = 0.f, width = 1.f;
-    float mix = 1.f, outputDb = 0.f, temperature = 20.f, humidity = 50.f, absorption = .7f, bedGain = 1.f;
+    float mix = 1.f, outputDb = 0.f, temperature = 20.f, humidity = 50.f, absorption = .7f;
     int scene=5, recordedAs=2, occlusionType=0, micType=7, micStereo=0;
     bool removeDelay = true, bypassEffort=false, muteAmbience=false, ambienceDuck=false, delta=false;
     // Bed trims in dB: -20 == scene default ("AUTO"), -60 == off, up to +12.
+    float levelMatch = 0.f;   // 0..1 amount of loudness matching of the voice+room field to the dry input
     std::array<float, 8> beds {-20.f,-20.f,-20.f,-20.f,-20.f,-20.f,-20.f,-20.f};
 };
 
@@ -55,6 +73,13 @@ public:
         for (auto& l : reflections) l.prepare(echoSize);
         throat.prepare(sr);
         diffuse.prepare(sr);
+        character.prepare(sr);
+        ambDelay.prepare(static_cast<std::size_t>(sr*.03)+8);
+        lmPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.30)));
+        lmUp=static_cast<float>(1.0-std::exp(-1.0/(sr*.35)));
+        lmDown=static_cast<float>(1.0-std::exp(-1.0/(sr*.06)));
+        lmFastPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.005)));
+        lmHoldDecay=static_cast<float>(std::exp(-1.0/(sr*.6)));
         limiter.prepare(sr, channels, quality==0 ? skellcore::TruePeakLimiter::Quality::Economy
                                                    : skellcore::TruePeakLimiter::Quality::Standard);
         limiter.setCeilingDb(-1.f);
@@ -65,15 +90,16 @@ public:
         presHighAlpha=static_cast<float>(1.0-std::exp(-2.0*3.141592653589793*std::min(5200.0,sr*.22)/sr));
         bedPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.08)));
         gustPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.9)));
-        secondSamples=static_cast<std::uint64_t>(std::llround(sr));
         reset();
     }
     void reset() noexcept {
         for (auto& l : direct) l.reset();
         for (auto& l : reflections) l.reset();
-        diffuse.reset(); limiter.reset(); throat.reset();
-        sourceLow = {}; directLow = {}; micLow = {}; micHigh = {}; ambienceLow = {};
-        voiceEnv=0.f; noiseState=currentSeed; sampleIndex=0;sceneMorph=1.f;
+        diffuse.reset(); limiter.reset(); throat.reset(); character.reset(); ambDelay.reset();
+        lmIn=lmOut=lmInFast=lmInHold=lmOutPre=0.f; lmGain=lmTarget=1.f;
+        echoGateTarget=echoGateSmoothed=0.f;
+        sourceLow = {}; directLow = {}; micLow = {}; micHigh = {};
+        voiceEnv=0.f; sampleIndex=0;sceneMorph=1.f;
         sourceGainSmoothed=outputGainSmoothed=sourceGainTarget=outputGainTarget=1.f;
         ambientGainSmoothed=ambientGainTarget=0.f;
         cutoffAlphaSmoothed=cutoffAlphaTarget=.75f;
@@ -81,30 +107,37 @@ public:
         earlyGainSmoothed=earlyGainTarget=0.f;
         echoTapSmoothed={0.f,0.f,0.f};echoTapTargets=echoTapSmoothed;
         lastDrr=lastDrrTarget=0.f;
-        dripPhase=dripLevel=0.f;
-        presLow={};presHigh={};presenceTarget=presenceSmoothed=0.f;
-        bedTarget={};bedSmoothed={};
-        gustLow=windLow=waterA=waterB=trafficLow=roomLow=insLow=forestLow=0.f;
+        restartAmbience();bedTarget={};
+        presLow={};presHigh={};presSumLow={};presSumHigh={};presenceTarget=presenceSmoothed=0.f;
     }
     int latencySamples() const noexcept { return limiter.latencySamples(); }
     void setScene(int id) noexcept {
         id=std::clamp(id,0,static_cast<int>(spaces.size())-1);
         if(id!=currentScene) { previousScene=currentScene;currentScene=id;sceneMorph=0.f; }
     }
+    // Restart every ambience generator from the current seed (noise, filters, oscillators, drips, bed
+    // levels), so the next samples are identical on every call. Used by reset() and by LOCK SEED.
+    void restartAmbience() noexcept {
+        noiseState=currentSeed;
+        bedSmoothed={}; ambientGainSmoothed=0.f;
+        gustLow=windLow=waterA=waterB=trafficLow=roomLow=insLow=forestLow=0.f;
+        dripPhase=dripLevel=0.f;
+        hum.prepare(sr,60.0);chirpLfo.prepare(sr,9.0);insectTone.prepare(sr,720.0);drone55.prepare(sr,55.0);drone83.prepare(sr,83.0);
+    }
     void setSeed(std::uint32_t seed) noexcept {
         seed=seed==0 ? 1u : seed;
         if(seed!=currentSeed) { currentSeed=seed;noiseState=seed; }
     }
-    void setQuality(int q) noexcept { quality = q; }
     float intelligibility() const noexcept { return lastClarity; }
     float directReverb() const noexcept { return lastDrr; }
     float peak() const noexcept { return lastPeak; }
-    void clearPeak() noexcept { lastPeak=0.f; }
 
     Frame processFrame(Frame input, const SceneControls& p, float wetAmount, float bypassAmount) noexcept {
         auto space=getSpace(currentScene);
+        SpaceCharacter ch=getCharacter(currentScene);
         if(sceneMorph<1.f) {
             const auto& old=getSpace(previousScene);
+            const auto& oc=getCharacter(previousScene);
             const float t=sceneMorph;
             const auto morph=[t](float from,float to){return from+(to-from)*t;};
             space.widthMeters=morph(old.widthMeters,space.widthMeters);
@@ -115,6 +148,13 @@ public:
             space.diffuseGain=morph(old.diffuseGain,space.diffuseGain);
             space.upperRollOffHz=morph(old.upperRollOffHz,space.upperRollOffHz);
             space.firstEchoMeters=morph(old.firstEchoMeters,space.firstEchoMeters);
+            // Character: continuous fields blend; timings/centres of an absent feature are held from the
+            // previous space while its gain fades, so nothing jumps.
+            ch.flutterFb=morph(oc.flutterFb,ch.flutterFb); if(ch.flutterMs<=0.f) ch.flutterMs=oc.flutterMs;
+            ch.resonDb=morph(oc.resonDb,ch.resonDb); if(ch.resonHz1<=0.f){ch.resonHz1=oc.resonHz1;ch.resonHz2=oc.resonHz2;}
+            ch.lowDb=morph(oc.lowDb,ch.lowDb); ch.highDb=morph(oc.highDb,ch.highDb);
+            ch.preMs=morph(oc.preMs,ch.preMs); ch.mod=morph(oc.mod,ch.mod);
+            ch.slapGain=morph(oc.slapGain,ch.slapGain); if(ch.slapMs<=0.f) ch.slapMs=oc.slapMs;
             sceneMorph=std::min(1.f,sceneMorph+1.f/static_cast<float>(sr*.3));
         }
         throat.setAmount(p.throatTexture);
@@ -131,7 +171,7 @@ public:
             sourceGainTarget=dbGain(gainDb);
             outputGainTarget=dbGain(p.outputDb);
             ambientGainTarget=p.muteAmbience || p.ambienceDb<=-59.9f ? 0.f
-                : dbGain(p.ambienceDb);   // beds are level-matched to ~-22 dBFS rms at 0 dB
+                : dbGain(p.ambienceDb)*.375f;   // beds sit at ~-30 dBFS rms at AMBIENCE 0 dB
             for(std::size_t i=0;i<bedTarget.size();++i) bedTarget[i]=bedWeight(static_cast<int>(i),space.ambience,p.beds[i]);
             // Presence Hold: restore the 1.8-5.2 kHz speech band that air absorption removes, more
             // at distance, and less on loud passages (so quiet consonants are what gets held up).
@@ -155,8 +195,10 @@ public:
             echoTapTargets[2]=std::clamp(firstEcho*2.19f+space.lengthMeters/speedOfSound*static_cast<float>(sr),1.f,static_cast<float>(sr*3.2));
             const float echoDistance=space.firstEchoMeters+std::max(0.f,p.distance);
             const float echoSpl=effortSpl(p.effort)-20.f*std::log10(std::max(1.f,echoDistance));
-            const float gate=std::clamp((echoSpl-24.f)/18.f,0.f,1.f);
+            const float gate=std::clamp((echoSpl-4.f)/26.f,0.f,1.f);   // far echoes stay audible at normal effort
             earlyGainTarget=space.reflectionGain*gate*std::sqrt(std::clamp(p.size,.5f,2.f));
+            echoGateTarget=gate*std::sqrt(std::clamp(p.size,.5f,2.f));
+            character.setTarget(ch);
             lastDrrTarget=directReverbDb(space,p.distance);
             // Most expensive SkellCore coefficient update: only once per 32 frames.
             diffuse.setParameters(space.rt60Seconds*p.size,space.isOpen ? .71f:.48f,1.f);
@@ -167,6 +209,7 @@ public:
         cutoffAlphaSmoothed+=controlPole*(cutoffAlphaTarget-cutoffAlphaSmoothed);
         micAlphaSmoothed+=controlPole*(micAlphaTarget-micAlphaSmoothed);
         earlyGainSmoothed+=controlPole*(earlyGainTarget-earlyGainSmoothed);
+        echoGateSmoothed+=controlPole*(echoGateTarget-echoGateSmoothed);
         presenceSmoothed+=controlPole*(presenceTarget-presenceSmoothed);
         const float presenceNow=presenceSmoothed*(1.f-.5f*std::clamp(voiceEnv*8.f,0.f,1.f));
         // Fractional reflection delays are smoothly moved instead of snapping
@@ -202,9 +245,11 @@ public:
         // Reflections and diffuse field remain independent of the direct 1/r loss.
         float early[2] {};
         float nearSignal[2] {};
+        float exc[2] {};
         const float in[2] {textured.left, channels == 2 ? textured.right : textured.left};
         for (int c=0;c<channels;++c) {
             const float excitation=sanitize(in[c] + (shaped-source));
+            exc[c]=excitation;
             direct[c].push(excitation);
             reflections[c].push(excitation);
             float d=direct[c].tap(tof);
@@ -227,8 +272,47 @@ public:
         const float voiceBoost=1.f;
         const float diffuseL=late[0]*lateGain;
         const float diffuseR=late[1]*lateGain;
-        const float wetL=nearSignal[0]*voiceBoost+early[0]+diffuseL+ambient;
-        const float wetR=channels==2 ? nearSignal[1]*voiceBoost + early[1] + diffuseR - ambient*.12f : wetL;
+        const auto room=character.process(exc[0],channels==2?exc[1]:exc[0],early[0],channels==2?early[1]:early[0],
+                                          diffuseL,diffuseR,earlyGainSmoothed,echoGateSmoothed);
+        float voiceL=nearSignal[0]*voiceBoost+room.left;
+        float voiceR=channels==2 ? nearSignal[1]*voiceBoost+room.right : voiceL;
+        // Presence Hold also lifts the 1.8-5.2 kHz speech band of the whole voice + room field, so it
+        // still works at distance where the reverberant field dominates the direct path.
+        presSumLow[0]+=presLowAlpha*(voiceL-presSumLow[0]);presSumHigh[0]+=presHighAlpha*(voiceL-presSumHigh[0]);
+        presSumLow[1]+=presLowAlpha*(voiceR-presSumLow[1]);presSumHigh[1]+=presHighAlpha*(voiceR-presSumHigh[1]);
+        voiceL+=(presSumHigh[0]-presSumLow[0])*presenceNow*.6f;
+        voiceR+=(presSumHigh[1]-presSumLow[1])*presenceNow*.6f;
+        // Loudness match: keep the processed voice + room field at the level of the dry input so
+        // distance, effort and long tails change the perspective, not the loudness (and far whispers
+        // stay audible). Ambience is excluded. Gain is held while the input is silent.
+        {
+            const float inPow=channels==2 ? .5f*(input.left*input.left+input.right*input.right) : input.left*input.left;
+            lmIn+=lmPole*(inPow-lmIn);
+            lmOut+=lmPole*(.5f*(voiceL*voiceL+voiceR*voiceR)-lmOut);
+            if(update) {
+                if(p.levelMatch<=.001f) lmTarget=1.f;
+                else if(lmIn>1.0e-9f)
+                    lmTarget=std::clamp(std::pow(std::clamp((lmIn+1.0e-12f)/(lmOut+1.0e-12f),1.0e-8f,1.0e8f),.5f*std::clamp(p.levelMatch,0.f,1.f)),.02f,1000.f);
+            }
+            lmGain+=(lmTarget>lmGain ? lmUp : lmDown)*(lmTarget-lmGain);
+            // Fast ceiling: the slow estimate above lags an abrupt path change (distance/effort/scene
+            // jump) and would apply the old, large gain to a suddenly louder path. Cap the applied gain so
+            // the output stays near the peak-held recent input level. The input level is peak-held with a
+            // release slower than any RT60 decay, so reverb tails are never gated.
+            lmInFast+=lmFastPole*(inPow-lmInFast);
+            lmInHold=std::max(lmInFast,lmInHold*lmHoldDecay);
+            lmOutPre+=lmFastPole*(.5f*(voiceL*voiceL+voiceR*voiceR)-lmOutPre);
+            float applied=lmGain;
+            if(p.levelMatch>.001f && lmInHold>1.0e-9f)
+                applied=std::min(lmGain,std::sqrt(lmInHold/(lmOutPre+1.0e-12f)));
+            voiceL*=applied; voiceR*=applied;
+        }
+        // Decorrelate the (mono) ambience bed into the right channel with a short delay.
+        ambDelay.push(ambient);
+        const float ambientR=ambDelay.tap(static_cast<float>(sr*.0127));
+        ambDelay.advance();
+        const float wetL=voiceL+ambient;
+        const float wetR=channels==2 ? voiceR+ambientR : wetL;
         // Stereo width applies to the reverberant field, not to the direct speech.
         const float mid=.5f*(wetL+wetR);
         const float patternWidth=p.micStereo==0 ? 0.f : p.micStereo==2 ? 1.3f : p.micStereo==3 ? 1.6f : 1.f;
@@ -249,6 +333,10 @@ public:
         }
         float limited[2] {};
         limiter.processFrame(output,limited,channels);
+        // Ceiling guard. The SkellCore limiter's release can start while a louder sample is still in its
+        // lookahead delay, so extreme material overshoots the ceiling by up to ~1.4 dB (measured). Clamp the
+        // rare overshoot so output never exceeds the -1 dBFS sample ceiling; the limiter does the real work.
+        for(int c=0;c<channels;++c) limited[c]=std::clamp(limited[c],-kCeilingLin,kCeilingLin);
         lastPeak=std::max(lastPeak,std::max(std::abs(limited[0]),std::abs(limited[channels-1])));
         const float clear=std::clamp((lastDrr+22.f)/45.f - std::abs(ambient)*3.f, 0.f,1.f);
         lastClarity=lastClarity*.995f+clear*.005f;
@@ -289,7 +377,6 @@ private:
         const float gust=std::clamp(1.f+320.f*gustLow,.3f,1.7f);
         windLow+=.004f*(n-windLow);
         const float wind=windLow*8.f;
-        const float t=static_cast<float>(sampleIndex%secondSamples)/static_cast<float>(sr);
         const float twoPi=2.f*pi;
         const auto active=[this](std::size_t i){return bedSmoothed[i]>1.0e-5f;};
         float sum=0.f;
@@ -316,27 +403,28 @@ private:
         if(active(3)) { trafficLow+=.012f*(n-trafficLow); sum+=bedSmoothed[3]*trafficLow*3.6f*(.5f+.5f*gust); }
         if(active(4)) {
             roomLow+=.015f*(n-roomLow);
-            sum+=2.5f*bedSmoothed[4]*(n*.08f+roomLow*8.f*.13f+std::sin(twoPi*60.f*t)*.012f);
+            sum+=2.5f*bedSmoothed[4]*(n*.08f+roomLow*8.f*.13f+hum.next()*.012f);
         }
         if(active(5)) {
             insLow+=.3f*(n-insLow);
-            const float chirp=std::max(0.f,std::sin(twoPi*9.f*t));
-            sum+=1.9f*bedSmoothed[5]*((n-insLow)*.10f*(.3f+.7f*chirp)+std::sin(twoPi*720.f*t)*.02f*chirp);
+            const float chirp=std::max(0.f,chirpLfo.next());
+            sum+=1.9f*bedSmoothed[5]*((n-insLow)*.10f*(.3f+.7f*chirp)+insectTone.next()*.02f*chirp);
         }
         if(active(6)) {
             forestLow+=.25f*(n-forestLow);
             sum+=1.57f*bedSmoothed[6]*(wind*.45f*gust+(n-forestLow)*.07f*std::clamp(gust-.6f,0.f,1.2f));
         }
-        if(active(7)) sum+=2.76f*bedSmoothed[7]*(std::sin(twoPi*55.f*t)*.05f+std::sin(twoPi*83.f*t)*.03f+wind*.25f);
+        if(active(7)) sum+=2.76f*bedSmoothed[7]*(drone55.next()*.05f+drone83.next()*.03f+wind*.25f);
         const float duck=p.ambienceDuck ? 1.f-.45f*std::clamp(voiceEnv*6.f,0.f,1.f) : 1.f;
         return sanitize(sum*ambientGainSmoothed*duck);
     }
-    double sr=48000.; int channels=2, currentScene=5, quality=1;
+    double sr=48000.; int channels=2, currentScene=5;
     std::array<DelayLine,2> direct, reflections;
     ThroatTexture throat;
     skellcore::FDNReverb diffuse;
     skellcore::TruePeakLimiter limiter;
-    std::array<float,2> sourceLow {}, directLow {}, micLow {}, micHigh {}, ambienceLow {};
+    static constexpr float kCeilingLin=.8912509f; // -1 dBFS, matches limiter.setCeilingDb(-1.f)
+    std::array<float,2> sourceLow {}, directLow {}, micLow {}, micHigh {};
     std::uint32_t noiseState=0x98712341u,currentSeed=0x98712341u;
     std::uint64_t sampleIndex=0;
     int previousScene=5;float sceneMorph=1.f;
@@ -350,10 +438,15 @@ private:
     std::array<float,3> echoTapTargets{},echoTapSmoothed{};
     float controlPole=.017f,echoPole=.003f,dripDecay=.9995f;
     float dripPhase=0.f,dripLevel=0.f,dripHz=1200.f;
-    std::array<float,2> presLow {}, presHigh {};
+    RoomCharacter character;
+    DelayLine ambDelay;
+    float echoGateTarget=0.f,echoGateSmoothed=0.f;
+    float lmInFast=0.f,lmInHold=0.f,lmOutPre=0.f,lmFastPole=.004f,lmHoldDecay=.9999f;
+    float lmIn=0.f,lmOut=0.f,lmGain=1.f,lmTarget=1.f,lmPole=.0001f,lmUp=.0001f,lmDown=.0005f;
+    std::array<float,2> presLow {}, presHigh {}, presSumLow {}, presSumHigh {};
     float presLowAlpha=.2f,presHighAlpha=.5f,presenceTarget=0.f,presenceSmoothed=0.f;
     std::array<float,8> bedTarget {}, bedSmoothed {};
     float bedPole=.0004f,gustPole=.0001f,gustLow=0.f,windLow=0.f,waterA=0.f,waterB=0.f,trafficLow=0.f,roomLow=0.f,insLow=0.f,forestLow=0.f;
-    std::uint64_t secondSamples=48000;
+    SineOsc hum,chirpLfo,insectTone,drone55,drone83;
 };
 } // namespace afar
