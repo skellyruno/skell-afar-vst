@@ -1,0 +1,97 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Bathroom Tile",
+  "category": "indoor",
+  "geometry": {
+    "type": "small tiled room",
+    "dimensionsMeters": {
+      "width": 2.5,
+      "length": 3,
+      "height": 2.5
+    },
+    "openness": false
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "tile",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "tile",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "tile",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "tile",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    }
+  ],
+  "scattering": 0.1,
+  "rt60TargetSeconds": 1.1,
+  "reflectionLevel": 0.36,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 2,
+      "gain": 0.36,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": true,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "water",
+      "levelDb": -26,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "flutter",
+    "ringing tile",
+    "pipe drips"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.4: SceneModel.h spaces + characters)"
+}

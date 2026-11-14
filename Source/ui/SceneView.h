@@ -5,19 +5,23 @@
 #include <cmath>
 
 namespace afar::ui {
-// Vector scene display. The per-scene backdrop is rendered once into a cached image
-// (at physical pixel density) and only the source, ripples and path are animated.
+// Scene stage. The voice is a skeleton: distance is depth (far = small and up at the horizon, near =
+// large in the foreground next to the microphone), it walks whenever the distance changes (drags,
+// automation or Walk paths), its jaw follows the output level and its arms open with vocal effort.
+// The per-scene backdrop is rendered once into a cached image at physical-pixel density.
 class SceneView final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
-    explicit SceneView(SkellAfarAudioProcessor& p):processor(p) {startTimerHz(30);setMouseCursor(juce::MouseCursor::DraggingHandCursor);setTooltip("Drag the voice: left/right changes distance, up/down changes its facing angle.");}
+    explicit SceneView(SkellAfarAudioProcessor& p):processor(p) {
+        startTimerHz(30);setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        setTooltip("Drag the skeleton: up/down moves it back and forward (distance), left/right turns it away (angle).");
+    }
     void resized() override {backdropScene=-1;}
     void paint(juce::Graphics& g) override {
         const auto b=getLocalBounds().toFloat();
         panel(g,b);
-        const int scene=std::clamp(static_cast<int>(processor.parameters.getRawParameterValue("space")->load()),0,14);
+        const int scene=std::clamp(static_cast<int>(processor.parameters.getRawParameterValue("space")->load()),0,static_cast<int>(spaces.size())-1);
         const auto& s=getSpace(scene);
         const auto art=artArea();
-        // ---- header
         sectionTitle(g,juce::String(s.name).toUpperCase(),14.f,10.f,b.getWidth()-120.f,16.f);
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(11.f)));
         g.drawText(s.description,24.f,31.f,b.getWidth()-120.f,14.f,juce::Justification::centredLeft);
@@ -26,7 +30,6 @@ public:
         g.setColour(Theme::background);g.fillRoundedRectangle(pill,8.5f);
         g.setColour(Theme::greenDim.brighter(.3f));g.drawRoundedRectangle(pill,8.5f,1.f);
         g.setColour(Theme::greenLight);g.setFont(titleFont(9.f));g.drawText(cat,pill,juce::Justification::centred);
-        // ---- backdrop
         juce::Path clip;clip.addRoundedRectangle(art,7.f);
         g.saveState();
         g.reduceClipRegion(clip);
@@ -34,57 +37,55 @@ public:
         g.setGradientFill(sky);g.fillRect(art);
         ensureBackdrop(scene,g.getInternalContext().getPhysicalPixelScaleFactor());
         if(backdrop.isValid()) g.drawImage(backdrop,art);
-        // drifting dust motes (cheap, deterministic) for a little life in every space
-        for(int i=0;i<16;++i) {
+        for(int i=0;i<16;++i) {   // drifting dust motes
             const float sp=.25f+.75f*hash01(i,3);
             const float px=art.getX()+art.getWidth()*std::fmod(hash01(i,1)+drift*sp,1.f);
             const float py=art.getY()+art.getHeight()*(.10f+.80f*hash01(i,2))+3.f*std::sin(drift*9.f*sp+static_cast<float>(i));
             g.setColour(Theme::greenLight.withAlpha(.07f+.10f*sp));
             g.fillEllipse(px-1.f,py-1.f,2.f*sp+1.f,2.f*sp+1.f);
         }
-        // ---- source / mic (distance runs right = near to left = far)
+        const auto& pv=processor.parameters;
         const float d=std::max(.05f,processor.meterDistance.load(std::memory_order_relaxed));
-        const float facing=std::clamp(processor.parameters.getRawParameterValue("angle")->load()/180.f,0.f,1.f);
+        const float dn=distanceNormalized(d);
+        const float angle=std::clamp(pv.getRawParameterValue("angle")->load(),0.f,180.f);
+        const float effort=std::clamp(pv.getRawParameterValue("effort")->load(),0.f,1.f);
         const float level=std::clamp(processor.meterPeak.load(std::memory_order_relaxed),0.f,1.f);
-        const float x=srcX(distanceNormalized(d)),y=art.getY()+art.getHeight()*(.20f+.60f*facing);
-        const float micX=micPosition(),floorY=art.getBottom()-9.f;
-        g.setColour(Theme::green.withAlpha(.30f));g.drawLine(x,y,micX,y,1.4f);
-        // first-floor-bounce path (illustrative only, not a ray trace)
-        juce::Path bounce;bounce.startNewSubPath(x,y);bounce.lineTo((x+micX)*.5f,floorY);bounce.lineTo(micX,y);
-        g.setColour(Theme::ice.withAlpha(.16f));g.strokePath(bounce,juce::PathStrokeType(1.f));
-        for(int i=0;i<3;++i) {
-            const float progress=std::fmod(pulsePhase+static_cast<float>(i)/3.f,1.f);
-            const float rr=9.f+progress*74.f;
-            g.setColour(Theme::green.withAlpha((.20f+.16f*level)*(1.f-progress)));
-            g.drawEllipse(x-rr,y-rr,rr*2.f,rr*2.f,1.1f);
+        const float cx=art.getCentreX();
+        // ---- ground rings: how far each distance is on the stage
+        g.setFont(juce::Font(juce::FontOptions(9.f)));
+        for(const float m:{.3f,1.f,3.f,10.f,30.f,100.f}) {
+            const float dm=distanceNormalized(m),sc=scaleFor(dm),y=footYFor(dm);
+            const float rw=art.getWidth()*(.18f+.30f*sc);
+            g.setColour(Theme::green.withAlpha(.10f+.12f*sc));
+            g.drawEllipse(cx-rw,y-4.f*sc-1.f,rw*2.f,8.f*sc+2.f,1.f);
+            g.setColour(Theme::muted.withAlpha(.35f+.35f*sc));
+            g.drawText(m<1.f?juce::String("0.3 m"):juce::String(static_cast<int>(m))+" m",cx+rw-34.f,y-6.f,34.f,11.f,juce::Justification::centredRight);
         }
-        g.setColour(Theme::green.withAlpha(.18f));g.fillEllipse(x-11.f,y-11.f,22.f,22.f);
-        g.setColour(Theme::greenLight);g.fillEllipse(x-5.5f,y-5.5f,11.f,11.f);
-        g.setColour(Theme::bone);g.fillRoundedRectangle(micX-5.f,y-11.f,10.f,22.f,3.f);
-        g.drawLine(micX,y+12.f,micX,y+19.f,1.5f);
-        g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(9.f)));
-        g.drawText("VOICE",x-24.f,y-26.f,48.f,11.f,juce::Justification::centred);
-        g.drawText("MIC",micX-16.f,y-26.f,32.f,11.f,juce::Justification::centred);
+        // ---- skeleton
+        const float side=lateralSign*(angle/180.f)*art.getWidth()*.40f;
+        const float sx=cx+side,foot=footYFor(dn),sc=scaleFor(dn);
+        const float micX=cx,micY=art.getBottom()-9.f;
+        const float hx=sx,hy=foot-92.f*sc;
+        g.setColour(Theme::green.withAlpha(.22f));g.drawLine(hx,hy,micX,micY-14.f,1.3f);   // direct path
+        for(int i=0;i<3;++i) {   // voice waves leaving the mouth
+            const float progress=std::fmod(pulsePhase+static_cast<float>(i)/3.f,1.f);
+            const float rr=(6.f+progress*60.f)*(.55f+.45f*sc);
+            g.setColour(Theme::green.withAlpha((.18f+.20f*level)*(1.f-progress)));
+            g.drawEllipse(hx-rr,hy+2.f*sc-rr,rr*2.f,rr*2.f,1.1f);
+        }
+        drawSkeleton(g,sx,foot,sc,angle*pi/180.f,walkPhase,moveAmt,effort,level,std::sin(breathPhase));
+        // microphone in the foreground
+        g.setColour(Theme::bone);g.fillRoundedRectangle(micX-5.f,micY-26.f,10.f,20.f,4.f);
+        g.setColour(Theme::muted);g.drawLine(micX,micY-6.f,micX,micY+8.f,1.5f);g.drawLine(micX-9.f,micY+8.f,micX+9.f,micY+8.f,1.5f);
+        g.setFont(juce::Font(juce::FontOptions(9.f)));g.drawText("MIC",micX+9.f,micY-24.f,30.f,11.f,juce::Justification::centredLeft);
         g.restoreState();
         g.setColour(Theme::greenDim.withAlpha(.9f));g.drawRoundedRectangle(art,7.f,1.f);
-        // ---- log distance ruler (0.1 .. 100 m), marker follows the source
-        const float ry=art.getBottom()+13.f;
-        g.setColour(Theme::greenDim.brighter(.2f));g.drawLine(srcX(1.f),ry,srcX(0.f),ry,1.f);
-        g.setFont(juce::Font(juce::FontOptions(9.f)));
-        for(const float m:{.1f,1.f,10.f,100.f}) {
-            const float tx=srcX(distanceNormalized(m));
-            g.setColour(Theme::muted.withAlpha(.8f));g.drawLine(tx,ry-3.f,tx,ry+3.f,1.f);
-            g.drawText(juce::String(m<1.f?.1:static_cast<double>(m),m<1.f?1:0)+" m",tx-20.f,ry+4.f,40.f,11.f,juce::Justification::centred);
-        }
-        juce::Path marker;marker.addTriangle(x-5.f,ry+4.f,x+5.f,ry+4.f,x,ry-3.f);
-        g.setColour(Theme::green);g.fillPath(marker);
-        // ---- readout chips
         const float dr=processor.meterDrr.load(std::memory_order_relaxed);
         const float cy=b.getBottom()-31.f;
+        const float sizeNow=pv.getRawParameterValue("size")->load();
         chip(g,14.f,cy,"DIST",meters(d));
         chip(g,126.f,cy,"DRR",juce::String(dr,1)+" dB");
         chip(g,238.f,cy,"RT60",juce::String(s.rt60Seconds,1)+" s");
-        const float sizeNow=processor.parameters.getRawParameterValue("size")->load();
         chip(g,350.f,cy,"ECHO",juce::String(echoDelayMs(s.firstEchoMeters*sizeNow),0)+" ms");
     }
     void mouseDown(const juce::MouseEvent& e) override {
@@ -99,14 +100,14 @@ public:
     }
 private:
     juce::Rectangle<float> artArea() const {
-        return {13.f,52.f,static_cast<float>(getWidth())-26.f,static_cast<float>(getHeight())-52.f-76.f};
+        return {13.f,52.f,static_cast<float>(getWidth())-26.f,static_cast<float>(getHeight())-52.f-52.f};
     }
-    float micPosition() const {const auto a=artArea();return a.getRight()-22.f;}
-    // normalised distance 0 (near) .. 1 (far) -> x; far is left, near is next to the mic
-    float srcX(float norm) const {
-        const auto a=artArea();const float left=a.getX()+18.f,right=micPosition()-20.f;
-        return left+(right-left)*(1.f-std::clamp(norm,0.f,1.f));
+    // depth mapping: dn 0 (near) .. 1 (far) -> stage position and size
+    float footYFor(float dn) const {
+        const auto a=artArea();const float nearY=a.getBottom()-20.f,farY=a.getY()+a.getHeight()*.42f;
+        return nearY+(farY-nearY)*std::pow(std::clamp(dn,0.f,1.f),.75f);
     }
+    static float scaleFor(float dn) {return 1.f-.76f*std::pow(std::clamp(dn,0.f,1.f),.6f);}
     static juce::String meters(float m) {return juce::String(m,m<10.f?2:(m<100.f?1:0))+" m";}
     static void chip(juce::Graphics& g,float x,float y,const juce::String& label,const juce::String& value) {
         const juce::Rectangle<float> r(x,y,104.f,22.f);
@@ -119,13 +120,76 @@ private:
     }
     void drag(const juce::MouseEvent& e) {
         const auto a=artArea();
-        const float left=a.getX()+18.f,right=micPosition()-20.f;
-        const float nx=std::clamp((static_cast<float>(e.x)-left)/std::max(1.f,right-left),0.f,1.f);
+        const float nearY=a.getBottom()-20.f,farY=a.getY()+a.getHeight()*.42f;
+        const float yNorm=std::clamp((nearY-(static_cast<float>(e.y)+46.f))/std::max(1.f,nearY-farY),0.f,1.f);
         if(auto* p=processor.parameters.getParameter("distance"))
-            p->setValueNotifyingHost(p->convertTo0to1(distanceMeters(1.f-nx)));
-        const float ny=std::clamp((static_cast<float>(e.y)-a.getY())/std::max(1.f,a.getHeight()),0.f,1.f);
+            p->setValueNotifyingHost(p->convertTo0to1(distanceMeters(std::pow(yNorm,1.f/.75f))));
+        const float rel=(static_cast<float>(e.x)-a.getCentreX())/(a.getWidth()*.40f);
+        lateralSign=rel<0.f?-1.f:1.f;
         if(auto* p=processor.parameters.getParameter("angle"))
-            p->setValueNotifyingHost(p->convertTo0to1(std::clamp((ny-.20f)/.60f,0.f,1.f)*180.f));
+            p->setValueNotifyingHost(p->convertTo0to1(std::clamp(std::abs(rel),0.f,1.f)*180.f));
+    }
+    // Stylised walking skeleton, feet at footY, ~100 units tall at s = 1.
+    static void drawSkeleton(juce::Graphics& g,float cx,float footY,float s,float turn,float phase,float walk,
+                             float effort,float level,float breath) {
+        const float ts=std::max(.32f,std::abs(std::cos(turn)));
+        const bool front=std::cos(turn)>=0.f;
+        const float thick=std::max(1.1f,2.4f*s);
+        const auto limb=[&](float x0,float y0,float x1,float y1) {
+            g.setColour(Theme::green.withAlpha(.10f));g.drawLine(x0,y0,x1,y1,thick*3.2f);
+            g.setColour(Theme::bone.withAlpha(.92f));g.drawLine(x0,y0,x1,y1,thick);
+        };
+        g.setColour(juce::Colours::black.withAlpha(.35f));g.fillEllipse(cx-20.f*s,footY-3.f*s,40.f*s,6.f*s);
+        const float bob=std::abs(std::sin(phase))*2.5f*s*walk;
+        const float hipY=footY-46.f*s-bob,shY=footY-76.f*s-bob+breath*.6f*s,headY=footY-92.f*s-bob;
+        for(int sd=-1;sd<=1;sd+=2) {   // legs: opposite swing, knee lift while stepping
+            const float ph=phase+(sd>0?0.f:pi);
+            const float th=std::sin(ph)*.32f*walk,lift=std::max(0.f,std::sin(ph))*7.f*s*walk;
+            const float hipX=cx+static_cast<float>(sd)*4.5f*s*ts;
+            const float kx=hipX+std::sin(th)*22.f*s,ky=hipY+std::cos(th)*22.f*s-lift*.5f;
+            const float sh=th-std::max(0.f,std::sin(ph+1.2f))*.7f*walk;
+            const float fx=kx+std::sin(sh)*22.f*s,fy=ky+std::cos(sh)*22.f*s-lift*.5f;
+            limb(hipX,hipY,kx,ky);limb(kx,ky,fx,fy);limb(fx,fy,fx+3.f*s*static_cast<float>(sd),fy);
+        }
+        limb(cx-5.5f*s*ts,hipY,cx+5.5f*s*ts,hipY);
+        limb(cx,hipY,cx,shY);
+        for(int i=0;i<4;++i) {   // ribcage
+            const float ry=shY+(4.f+static_cast<float>(i)*4.6f)*s,w=(11.f-static_cast<float>(i)*1.8f)*s*ts*(1.f+breath*.04f);
+            juce::Path r;r.startNewSubPath(cx-w,ry);r.quadraticTo(cx,ry+3.5f*s,cx+w,ry);
+            g.setColour(Theme::bone.withAlpha(.8f));g.strokePath(r,juce::PathStrokeType(thick*.8f));
+        }
+        limb(cx-9.f*s*ts,shY,cx+9.f*s*ts,shY);
+        const float spread=std::max(0.f,effort-.55f)*1.2f,tuck=std::max(0.f,.35f-effort);   // shout opens, whisper tucks in
+        for(int sd=-1;sd<=1;sd+=2) {   // arms
+            const float swing=std::sin(phase+(sd>0?pi:0.f))*.5f*walk;
+            const float a1=static_cast<float>(sd)*(.10f+spread-tuck*.25f)+swing*.7f;
+            const float shx=cx+static_cast<float>(sd)*9.f*s*ts;
+            const float ex=shx+std::sin(a1)*15.f*s,ey=shY+std::cos(a1)*15.f*s;
+            const float a2=a1+static_cast<float>(-sd)*(.30f+tuck*1.2f)+swing*.3f;
+            limb(shx,shY,ex,ey);limb(ex,ey,ex+std::sin(a2)*14.f*s,ey+std::cos(a2)*14.f*s);
+        }
+        limb(cx,headY+9.6f*s,cx,shY);   // neck
+        const float k=s*1.2f;   // skull is drawn larger than the body scale so it stays readable when far
+        const float jaw=std::clamp(effort*.45f+level*.9f,0.f,1.f);
+        g.setColour(Theme::green.withAlpha(.12f));g.drawEllipse(cx-11.f*k,headY-11.f*k,22.f*k,20.f*k,thick*3.f);
+        g.setColour(Theme::bone);g.drawEllipse(cx-9.f*k,headY-9.f*k,18.f*k,16.f*k,thick);
+        if(front) {
+            g.setColour(Theme::background.withAlpha(.95f));
+            g.fillEllipse(cx-6.f*k,headY-3.f*k,5.f*k,5.6f*k);g.fillEllipse(cx+1.f*k,headY-3.f*k,5.f*k,5.6f*k);
+            g.setColour(Theme::green.withAlpha(.3f+.7f*level));
+            g.fillEllipse(cx-4.4f*k,headY-1.4f*k,2.4f*k,2.4f*k);g.fillEllipse(cx+2.6f*k,headY-1.4f*k,2.4f*k,2.4f*k);
+            juce::Path nose;nose.addTriangle(cx-1.2f*k,headY+2.5f*k,cx+1.2f*k,headY+2.5f*k,cx,headY+.6f*k);
+            g.setColour(Theme::bone.withAlpha(.9f));g.fillPath(nose);
+            const float jy=headY+7.f*k+jaw*5.f*k;   // jaw drops with the voice
+            g.drawLine(cx-5.f*k,headY+6.f*k,cx-4.f*k,jy,thick*.8f);g.drawLine(cx+5.f*k,headY+6.f*k,cx+4.f*k,jy,thick*.8f);
+            g.drawLine(cx-4.f*k,jy,cx+4.f*k,jy,thick*.8f);
+            for(int tooth=-2;tooth<=2;++tooth) {
+                const float tx=cx+static_cast<float>(tooth)*1.7f*k;
+                g.drawLine(tx,headY+6.f*k,tx,headY+8.f*k,std::max(1.f,thick*.5f));
+            }
+        } else {
+            g.setColour(Theme::bone.withAlpha(.5f));g.drawLine(cx,headY-9.f*k,cx,headY+7.f*k,thick*.7f);   // cranial seam
+        }
     }
     void ensureBackdrop(int scene,float pixelScale) {
         const auto a=artArea();
@@ -149,17 +213,17 @@ private:
         const auto ground=[&](float y,float a){stroke(a);g.drawLine(0.f,y,W,y,1.2f);};
         switch(scene) {
         case 0: case 1: case 2: { // tunnel, sewer pipe, subway: receding frames toward the far (left) end
-            const float vx=W*.12f;
+            const float vx=W*.5f;
             for(int i=0;i<9;++i) {
                 const float t=static_cast<float>(i)/9.f,sc=std::pow(1.f-t,1.5f);
-                const float w=W*sc*1.02f,h=H*sc*.96f,cx=lerp(W*.5f,vx,t),cy=lerp(H*.5f,H*.52f,t);
+                const float w=W*sc*1.02f,h=H*sc*.96f,cx=vx,cy=lerp(H*.5f,H*.46f,t);
                 fillc(.05f);
                 if(scene==1){g.fillEllipse(cx-w*.5f,cy-h*.5f,w,h);stroke(.09f+.22f*t);g.drawEllipse(cx-w*.5f,cy-h*.5f,w,h,1.1f);}
                 else{g.fillRoundedRectangle(cx-w*.5f,cy-h*.5f,w,h,12.f*sc);stroke(.09f+.22f*t);g.drawRoundedRectangle(cx-w*.5f,cy-h*.5f,w,h,12.f*sc,1.1f);}
             }
-            if(scene==2){stroke(.32f);g.drawLine(W*.98f,H*.97f,vx+4.f,H*.56f,1.4f);g.drawLine(W*.66f,H*.97f,vx+2.f,H*.56f,1.4f);}
+            if(scene==2){stroke(.32f);g.drawLine(W*.78f,H*.98f,vx+3.f,H*.52f,1.4f);g.drawLine(W*.22f,H*.98f,vx-3.f,H*.52f,1.4f);}
             if(scene==1){for(int i=0;i<5;++i){stroke(.18f);const float rx=W*(.25f+.14f*static_cast<float>(i));g.drawEllipse(rx,H*.86f+static_cast<float>(i%2)*5.f,26.f,5.f,1.f);}}
-            if(scene==0){for(int i=0;i<6;++i){const float t=std::pow(static_cast<float>(i)/6.f,.8f);fillc(.9f);g.fillEllipse(lerp(W*.9f,vx,t),lerp(H*.10f,H*.46f,t),3.f,3.f);}}
+            if(scene==0){for(int i=0;i<6;++i){const float t=std::pow(static_cast<float>(i)/6.f,.8f);fillc(.9f);g.fillEllipse(vx-1.5f,lerp(H*.02f,H*.40f,t),3.f,3.f);}}
             break; }
         case 3: { // cave: stalactites, stalagmites, irregular walls
             for(int i=0;i<12;++i){
@@ -216,8 +280,9 @@ private:
         case 10: { // parking garage: low slab and columns
             stroke(.30f);g.drawLine(0.f,H*.16f,W,H*.16f,1.5f);ground(floorY,.3f);
             for(int i=0;i<8;++i){
-                const float t=static_cast<float>(i)/8.f,x=W*(.92f-.84f*std::pow(t,.85f)),w=lerp(18.f,6.f,t),top=lerp(H*.16f,H*.30f,t),bot=lerp(floorY,H*.62f,t);
-                fillc(.4f);g.fillRect(x,top,w,bot-top);stroke(.3f);g.drawRect(x,top,w,bot-top,1.f);
+                const float t=static_cast<float>(i)/8.f,w=lerp(18.f,6.f,t),top=lerp(H*.16f,H*.30f,t),bot=lerp(floorY,H*.62f,t);
+                for(int sd=-1;sd<=1;sd+=2){const float x=W*.5f+static_cast<float>(sd)*W*(.46f-.40f*std::pow(t,.8f))-w*.5f;
+                fillc(.4f);g.fillRect(x,top,w,bot-top);stroke(.3f);g.drawRect(x,top,w,bot-top,1.f);}
             }
             break; }
         case 11: { // stairwell: flights of steps, handrail
@@ -228,7 +293,7 @@ private:
             break; }
         case 12: { // cathedral: nested pointed arches
             for(int i=0;i<5;++i){
-                const float t=static_cast<float>(i)/5.f,w=W*(.70f-.11f*static_cast<float>(i)),cx=lerp(W*.5f,W*.30f,t),top=H*(.05f+.12f*t),spring=H*(.50f+.02f*t),fl=lerp(floorY,H*.62f,t);
+                const float t=static_cast<float>(i)/5.f,w=W*(.70f-.11f*static_cast<float>(i)),cx=W*.5f,top=H*(.05f+.12f*t),spring=H*(.50f+.02f*t),fl=lerp(floorY,H*.62f,t);
                 juce::Path a;a.startNewSubPath(cx-w*.5f,fl);a.lineTo(cx-w*.5f,spring);
                 a.cubicTo(cx-w*.5f,spring-H*.2f,cx-w*.12f,top+H*.12f,cx,top);a.cubicTo(cx+w*.12f,top+H*.12f,cx+w*.5f,spring-H*.2f,cx+w*.5f,spring);a.lineTo(cx+w*.5f,fl);
                 stroke(.12f+.25f*t);g.strokePath(a,juce::PathStrokeType(1.3f));
@@ -240,13 +305,50 @@ private:
             ground(floorY,.3f);stroke(.4f);g.drawLine(W*.9f,H*.15f,W*.9f,H*.55f,1.5f);g.drawLine(W*.94f,H*.15f,W*.94f,H*.55f,1.5f);
             for(int i=0;i<4;++i)g.drawLine(W*.9f,H*(.22f+.09f*static_cast<float>(i)),W*.94f,H*(.22f+.09f*static_cast<float>(i)),1.f);
             break; }
-        default: { // warehouse: racking and crates
+        case 14: { // warehouse: racking and crates
             for(int c=0;c<6;++c){
                 const float x=W*(.08f+.15f*static_cast<float>(c));stroke(.3f);g.drawLine(x,H*.2f,x,floorY,1.4f);
                 for(int r=0;r<3;++r){const float y=H*(.35f+.2f*static_cast<float>(r));g.drawLine(x,y,x+W*.12f,y,1.2f);
                     if(rnd(c,r)>.35f){fillc(.5f);g.fillRect(x+4.f+rnd(c,r+5)*10.f,y-14.f,16.f,14.f);}}
             }
             ground(floorY,.3f);break; }
+        case 15: { // bathroom: tiled wall grid, tub
+            for(int i=1;i<16;++i){stroke(.10f);g.drawLine(W*static_cast<float>(i)/16.f,0.f,W*static_cast<float>(i)/16.f,floorY,1.f);}
+            for(int i=1;i<8;++i){stroke(.10f);g.drawLine(0.f,floorY*static_cast<float>(i)/8.f,W,floorY*static_cast<float>(i)/8.f,1.f);}
+            fillc(.45f);g.fillRoundedRectangle(W*.62f,H*.56f,W*.32f,H*.24f,10.f);stroke(.4f);g.drawRoundedRectangle(W*.62f,H*.56f,W*.32f,H*.24f,10.f,1.4f);
+            g.drawEllipse(W*.12f,H*.50f,W*.10f,H*.07f,1.2f);g.drawLine(W*.17f,H*.57f,W*.17f,floorY,1.4f);
+            ground(floorY,.3f);break; }
+        case 16: { // crypt: dark nested arches and wall niches
+            for(int i=0;i<5;++i){
+                const float t=static_cast<float>(i)/5.f,w=W*(.62f-.10f*static_cast<float>(i)),cx=W*.5f,top=H*(.08f+.12f*t),spring=H*(.52f+.02f*t),fl=lerp(floorY,H*.64f,t);
+                juce::Path a;a.startNewSubPath(cx-w*.5f,fl);a.lineTo(cx-w*.5f,spring);
+                a.cubicTo(cx-w*.5f,spring-H*.2f,cx-w*.12f,top+H*.1f,cx,top);a.cubicTo(cx+w*.12f,top+H*.1f,cx+w*.5f,spring-H*.2f,cx+w*.5f,spring);a.lineTo(cx+w*.5f,fl);
+                stroke(.10f+.22f*t);g.strokePath(a,juce::PathStrokeType(1.3f));
+            }
+            for(int i=0;i<4;++i){fillc(.5f);const float nx=W*(.06f+.06f*static_cast<float>(i%2)),ny=H*(.30f+.14f*static_cast<float>(i/2));
+                g.fillRoundedRectangle(nx,ny,W*.05f,H*.10f,4.f);g.fillRoundedRectangle(W-nx-W*.05f,ny,W*.05f,H*.10f,4.f);}
+            ground(floorY,.28f);break; }
+        case 17: { // elevator shaft: looking up a metal tube, cables and landings
+            for(int i=0;i<9;++i){
+                const float t=static_cast<float>(i)/9.f,sc=std::pow(1.f-t,1.4f),w=W*.46f*sc,h=H*.92f*sc,cy=lerp(H*.55f,H*.18f,t);
+                fillc(.05f);g.fillRect(W*.5f-w*.5f,cy-h*.5f,w,h);stroke(.08f+.25f*t);g.drawRect(W*.5f-w*.5f,cy-h*.5f,w,h,1.1f);
+            }
+            stroke(.35f);g.drawLine(W*.46f,0.f,W*.495f,H*.30f,1.2f);g.drawLine(W*.54f,0.f,W*.505f,H*.30f,1.2f);
+            ground(floorY,.3f);break; }
+        case 18: { // snowfield: horizon, pines, drifting flakes
+            const float hy=H*.50f;
+            ground(hy,.25f);ground(hy+H*.10f,.10f);
+            for(int i=0;i<9;++i){const float x=W*rnd(i,1),h=lerp(8.f,26.f,rnd(i,2));juce::Path t;t.addTriangle(x-h*.35f,hy,x+h*.35f,hy,x,hy-h);fillc(.4f);g.fillPath(t);}
+            for(int i=0;i<60;++i){stroke(.20f);g.fillEllipse(W*rnd(i,3),H*rnd(i,4),2.f,2.f);}
+            break; }
+        case 19: { // arena: curved stands, floor oval, light towers
+            for(int i=0;i<7;++i){const float y=H*(.12f+.09f*static_cast<float>(i));stroke(.08f+.05f*static_cast<float>(i));
+                juce::Path l;l.startNewSubPath(0.f,y+H*.12f);l.quadraticTo(W*.22f,y-H*.06f,W*.36f,y);g.strokePath(l,juce::PathStrokeType(1.1f));
+                juce::Path r;r.startNewSubPath(W,y+H*.12f);r.quadraticTo(W*.78f,y-H*.06f,W*.64f,y);g.strokePath(r,juce::PathStrokeType(1.1f));}
+            stroke(.3f);g.drawEllipse(W*.18f,H*.62f,W*.64f,H*.22f,1.3f);
+            for(int sd=-1;sd<=1;sd+=2){const float tx=W*.5f+static_cast<float>(sd)*W*.43f;g.drawLine(tx,H*.05f,tx,H*.50f,1.4f);fillc(.9f);g.fillEllipse(tx-4.f,H*.03f,8.f,8.f);}
+            break; }
+        default: break;
         }
     }
     static float hash01(int i,int k) {
@@ -256,10 +358,17 @@ private:
     void timerCallback() override {
         drift=std::fmod(drift+.004f,1000.f);
         pulsePhase=std::fmod(pulsePhase+.016f+.025f*processor.meterEffort.load(std::memory_order_relaxed),1.f);
+        // walking: animate while the (smoothed) distance is actually changing
+        const float d=std::max(.05f,processor.meterDistance.load(std::memory_order_relaxed));
+        const float relChange=std::abs(d-lastDistance)/std::max(.05f,lastDistance);
+        lastDistance=d;
+        moveAmt+=.15f*(std::clamp(relChange*60.f,0.f,1.f)-moveAmt);
+        walkPhase=std::fmod(walkPhase+moveAmt*.30f,2.f*pi);
+        breathPhase=std::fmod(breathPhase+.07f,2.f*pi);
         repaint();
     }
     SkellAfarAudioProcessor& processor;
-    float pulsePhase=0.f,drift=0.f;
+    float pulsePhase=0.f,drift=0.f,lateralSign=1.f,lastDistance=3.f,moveAmt=0.f,walkPhase=0.f,breathPhase=0.f;
     juce::Image backdrop;
     int backdropScene=-1;
 };

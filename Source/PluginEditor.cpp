@@ -5,37 +5,58 @@
 #include <array>
 #include <functional>
 #include <memory>
-#include <vector>
 
 namespace {
 struct Preset {
     const char* name; int scene; float effort,distance,ambience; int mic;
+    float angle,occlusion; int occlusionType; float size,presence,texture;   // texture < 0: keep the user's setting
 };
-constexpr std::array<Preset,24> factory {{
-    {"INIT / Natural 3 m",5,.5f,3.f,-30.f,7},
-    {"Shout Down The Tunnel",0,.92f,25.f,-25.f,7},
-    {"Whisper From Dark End",0,.10f,80.f,-17.f,0},
-    {"Passing Car Voice",0,.73f,24.f,-18.f,0},
-    {"Whisper In The Pipe",1,.12f,19.f,-15.f,0},
-    {"Drip Call",1,.61f,10.f,-10.f,1},
-    {"Subway Announcement",2,.76f,30.f,-10.f,1},
-    {"Cave Echo Cry",3,.91f,27.f,-23.f,7},
-    {"Bunker Radio",4,.62f,6.f,-24.f,6},
-    {"Graveyard Call",5,.83f,43.f,-17.f,7},
-    {"Midnight Whisper",5,.09f,12.f,-16.f,0},
-    {"Stone Echo",5,.67f,35.f,-22.f,7},
-    {"Forest Whisper 30 m",6,.11f,30.f,-15.f,7},
-    {"Lost In The Trees",6,.65f,90.f,-18.f,1},
-    {"Canyon Shout",7,1.f,130.f,-21.f,7},
-    {"Valley Answer",7,.8f,155.f,-18.f,7},
-    {"Distant Voice Memo",8,.55f,48.f,-17.f,0},
-    {"Neighbor's Yard",8,.62f,25.f,-22.f,0},
-    {"Footsteps Closer",9,.65f,20.f,-19.f,7},
-    {"Running Away",9,.80f,30.f,-19.f,0},
-    {"Far Adlib Throw",7,.86f,69.f,-27.f,7},
-    {"Haunted Whisper Layer",5,.13f,56.f,-22.f,1},
-    {"Crowd Across The Field",8,.78f,110.f,-12.f,7},
-    {"Empty Pool Shout",13,.93f,7.f,-28.f,7}
+constexpr std::array<Preset,45> factory {{
+    {"INIT / Natural 3 m",5,0.5f,3.f,-30.f,7,0.f,0.f,0,1.f,0.f,0.f},
+    {"Shout Down The Tunnel",0,0.92f,25.f,-25.f,7,0.f,0.f,0,1.f,0.35f,0.65f},
+    {"Whisper From Dark End",0,0.1f,80.f,-17.f,0,0.f,0.f,0,1.3f,0.85f,0.33f},
+    {"Passing Car Voice",0,0.73f,24.f,-18.f,0,60.f,0.f,0,1.f,0.2f,0.f},
+    {"Whisper In The Pipe",1,0.12f,19.f,-15.f,0,0.f,0.f,0,0.8f,0.7f,0.33f},
+    {"Drip Call",1,0.61f,10.f,-10.f,1,25.f,0.f,0,1.f,0.2f,0.1f},
+    {"Subway Announcement",2,0.76f,30.f,-10.f,1,0.f,0.f,0,1.f,0.3f,0.f},
+    {"Cave Echo Cry",3,0.91f,27.f,-23.f,7,0.f,0.f,0,1.2f,0.2f,0.7f},
+    {"Bunker Radio",4,0.62f,6.f,-24.f,6,0.f,0.f,0,1.f,0.1f,0.2f},
+    {"Graveyard Call",5,0.83f,43.f,-17.f,7,0.f,0.f,0,1.f,0.3f,0.5f},
+    {"Midnight Whisper",5,0.09f,12.f,-16.f,0,10.f,0.f,0,1.f,0.5f,0.33f},
+    {"Stone Echo",5,0.67f,35.f,-22.f,7,90.f,0.f,0,1.f,0.f,0.f},
+    {"Forest Whisper 30 m",6,0.11f,30.f,-15.f,7,0.f,0.3f,4,1.f,0.8f,0.33f},
+    {"Lost In The Trees",6,0.65f,90.f,-18.f,1,120.f,0.5f,4,1.4f,0.4f,0.f},
+    {"Canyon Shout",7,1.f,130.f,-21.f,7,0.f,0.f,0,1.f,0.4f,0.8f},
+    {"Valley Answer",7,0.8f,155.f,-18.f,7,0.f,0.f,0,1.3f,0.5f,0.f},
+    {"Distant Voice Memo",8,0.55f,48.f,-17.f,0,0.f,0.f,0,1.f,0.3f,0.f},
+    {"Neighbor's Yard",8,0.62f,25.f,-22.f,0,30.f,0.65f,2,1.f,0.f,0.f},
+    {"Footsteps Closer",9,0.65f,20.f,-19.f,7,0.f,0.f,0,1.f,0.f,0.f},
+    {"Running Away",9,0.8f,30.f,-19.f,0,150.f,0.f,0,1.f,0.2f,0.15f},
+    {"Far Adlib Throw",7,0.86f,69.f,-27.f,7,0.f,0.f,0,1.f,0.35f,0.f},
+    {"Haunted Whisper Layer",5,0.13f,56.f,-22.f,1,0.f,0.f,0,1.2f,0.6f,0.45f},
+    {"Crowd Across The Field",8,0.78f,110.f,-12.f,7,0.f,0.f,0,1.f,0.5f,0.f},
+    {"Empty Pool Shout",13,0.93f,7.f,-28.f,7,0.f,0.f,0,1.f,0.f,0.7f},
+    {"Locked In The Bathroom",15,0.2f,2.2f,-26.f,0,90.f,0.55f,2,1.f,0.f,0.2f},
+    {"Voice Behind The Door",4,0.45f,2.5f,-30.f,0,0.f,0.8f,1,0.7f,0.f,0.f},
+    {"Elevator Ghost",17,0.18f,12.f,-24.f,0,0.f,0.f,0,1.f,0.7f,0.33f},
+    {"Dropped Down The Shaft",17,0.85f,35.f,-26.f,7,0.f,0.f,0,1.3f,0.2f,0.5f},
+    {"Crypt Sermon",16,0.6f,14.f,-20.f,7,0.f,0.f,0,1.f,0.3f,0.2f},
+    {"Catacomb Whisper",16,0.08f,18.f,-22.f,0,0.f,0.f,0,1.1f,0.9f,0.33f},
+    {"Cathedral Prayer",12,0.4f,22.f,-24.f,7,0.f,0.f,0,1.2f,0.3f,0.1f},
+    {"Cathedral Scream",12,1.f,15.f,-26.f,7,0.f,0.f,0,1.f,0.f,0.85f},
+    {"Snowbound Whisper",18,0.12f,10.f,-28.f,0,0.f,0.f,0,1.f,0.4f,0.33f},
+    {"Lost In The Blizzard",18,0.88f,160.f,-12.f,0,0.f,0.f,0,1.f,0.8f,0.4f},
+    {"Arena Announcer",19,0.85f,40.f,-18.f,1,0.f,0.f,0,1.f,0.4f,0.f},
+    {"Stadium Chant From Far",19,0.95f,120.f,-14.f,7,0.f,0.f,0,1.2f,0.7f,0.5f},
+    {"Parking Garage Chase",10,0.78f,28.f,-22.f,7,45.f,0.f,0,1.f,0.f,0.25f},
+    {"Stairwell Echo Up",11,0.55f,9.f,-24.f,7,20.f,0.f,0,1.f,0.f,0.1f},
+    {"Warehouse Rehearsal",14,0.58f,14.f,-27.f,4,0.f,0.f,0,1.f,0.f,0.f},
+    {"Subway Last Train",2,0.3f,60.f,-14.f,0,0.f,0.f,0,1.2f,0.5f,0.15f},
+    {"Alley Argument",9,0.85f,8.f,-21.f,1,70.f,0.3f,1,1.f,0.f,0.55f},
+    {"Sewer Monster Growl",1,0.95f,6.f,-16.f,7,0.f,0.f,0,0.8f,0.f,1.f},
+    {"Underwater Pool Voice",13,0.35f,4.f,-24.f,0,0.f,0.7f,5,1.f,0.f,0.f},
+    {"Midnight Phone Call",5,0.3f,1.5f,-30.f,0,0.f,0.f,0,1.f,0.f,0.2f},
+    {"Walkie Talkie Field Radio",8,0.65f,70.f,-22.f,6,0.f,0.f,0,1.f,0.f,0.1f}
 }};
 void resetParam(SkellAfarAudioProcessor& processor,const char* id) {
     if(auto* p=processor.parameters.getParameter(id)) {
@@ -57,9 +78,7 @@ class SkellAfarAudioProcessorEditor::Surface final : public juce::Component, pri
 public:
     Surface(SkellAfarAudioProcessor& p,std::function<void(float)> scaleCallback,
             std::function<void()> tourCallback)
-      : processor(p),onScale(std::move(scaleCallback)),
-        onShowTour(std::move(tourCallback)),
-        browser(),sceneView(p),scenePad(p),meters(p),detail(p) {
+      : processor(p),onScale(std::move(scaleCallback)),onShowTour(std::move(tourCallback)),browser(),sceneView(p),scenePad(p),meters(p),detail(p) {
         look=std::make_unique<afar::ui::AfarLookAndFeel>();
         setLookAndFeel(look.get());
         bg=juce::ImageFileFormat::loadFrom(BinaryData::bg_panel_png,static_cast<std::size_t>(BinaryData::bg_panel_pngSize));
@@ -99,7 +118,7 @@ public:
             knobs[static_cast<std::size_t>(i)].setTooltip(tips[i]);
             knobLabels[static_cast<std::size_t>(i)].setText(titles[i],juce::dontSendNotification);
             knobLabels[static_cast<std::size_t>(i)].setJustificationType(juce::Justification::centred);
-            knobLabels[static_cast<std::size_t>(i)].setFont(juce::Font(juce::FontOptions(9.2f)));
+            knobLabels[static_cast<std::size_t>(i)].setFont(juce::Font(juce::FontOptions(9.6f)));
             knobLabels[static_cast<std::size_t>(i)].setColour(juce::Label::textColourId,afar::ui::Theme::muted);
             addAndMakeVisible(knobs[static_cast<std::size_t>(i)]);
             addAndMakeVisible(knobLabels[static_cast<std::size_t>(i)]);
@@ -121,6 +140,9 @@ public:
         delayToggle.setTooltip("Remove the physical arrival delay so the voice stays on the beat.");
         delayToggle.setButtonText("BEAT ALIGNED");addAndMakeVisible(delayToggle);
         buttonAttachments.emplace_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.parameters,"removeDelay",delayToggle));
+        levelMatch.setButtonText("LEVEL MATCH");addAndMakeVisible(levelMatch);
+        levelMatch.setTooltip("Keeps the processed voice at the loudness of your input, so distance and effort change the perspective, not the volume (far whispers stay audible). Amount: MORE panel.");
+        buttonAttachments.emplace_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.parameters,"levelMatch",levelMatch));
         muteAmbience.setButtonText("MUTE AMB");addAndMakeVisible(muteAmbience);
         buttonAttachments.emplace_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.parameters,"muteAmbience",muteAmbience));
         addAndMakeVisible(presetList);
@@ -162,7 +184,7 @@ public:
         moreButton.setTooltip("Ambience beds, air model, routing and engine options.");
         moreButton.onClick=[this]{toggleDetail();};
         detail.onClose=[this]{toggleDetail();};
-        // The advanced panel must belong to the actual component tree.
+        // Keep the detail panel attached to the real JUCE component tree.
         addAndMakeVisible(detail);
         detail.setVisible(false);
         toggleAB.setTooltip("Switch between two complete plugin states (A / B).");
@@ -315,13 +337,14 @@ public:
         walkPath.setBounds(832,399,150,28);
         walkLength.setBounds(832,452,234,24);
         meters.setBounds(833,492,232,55);
-        delayToggle.setBounds(829,646,131,22);
-        muteAmbience.setBounds(966,646,106,22);
+        delayToggle.setBounds(829,638,131,22);
+        muteAmbience.setBounds(966,638,106,22);
+        levelMatch.setBounds(829,661,160,22);
         throatTexture.setBounds(326,599,75,72);
         for(int i=0;i<8;++i){
             const int x=408+i*50;
             knobs[static_cast<std::size_t>(i)].setBounds(x,602,49,69);
-            knobLabels[static_cast<std::size_t>(i)].setBounds(x-2,672,52,12);
+            knobLabels[static_cast<std::size_t>(i)].setBounds(x-6,672,61,12);
         }
         mic.setBounds(828,600,112,27);
         recorded.setBounds(950,600,122,27);
@@ -396,6 +419,12 @@ private:
         setParam(processor,"ambience",p.ambience);
         setParam(processor,"micType",static_cast<float>(p.mic));
         setParam(processor,"mix",1.f);
+        setParam(processor,"angle",p.angle);
+        setParam(processor,"occlusionAmount",p.occlusion);
+        setParam(processor,"occlusionType",static_cast<float>(p.occlusionType));
+        setParam(processor,"size",p.size);
+        setParam(processor,"presenceHold",p.presence);
+        if(p.texture>=0.f) setParam(processor,"throatTexture",p.texture);
         processor.editorState.setProperty("preset",p.name,nullptr);
     }
     static juce::File presetFolder() {
@@ -478,7 +507,7 @@ private:
     std::array<juce::Slider,8> knobs;
     std::array<juce::Label,8> knobLabels;
     juce::ComboBox mic,recorded,walkPath,presetList;
-    juce::ToggleButton power,walkEnabled,delayToggle,muteAmbience;
+    juce::ToggleButton power,walkEnabled,delayToggle,muteAmbience,levelMatch;
     juce::TextButton save,settings,randomise,toggleAB;
     juce::ValueTree slotState[2];
     int activeSlot=0;
@@ -510,7 +539,7 @@ SkellAfarAudioProcessorEditor::SkellAfarAudioProcessorEditor(SkellAfarAudioProce
     showGuidedTour(true);
 }
 SkellAfarAudioProcessorEditor::~SkellAfarAudioProcessorEditor(){
-    guidedTour.reset(); // spotlight outlives no referenced controls
+    guidedTour.reset();
     setLookAndFeel(nullptr);
 }
 void SkellAfarAudioProcessorEditor::showGuidedTour(bool firstRun) {

@@ -30,7 +30,7 @@ public:
         list.setColour(juce::ListBox::backgroundColourId,Theme::panel);
         list.setColour(juce::ListBox::outlineColourId,Theme::greenDim);
         addAndMakeVisible(list);
-        for(int i=0;i<16;++i) {
+        for(int i=0;i<20;++i) {
             int sz=0;
             const auto resource=juce::String::formatted("space_%02d_png",i);
             if (const auto* bytes=BinaryData::getNamedResource(resource.toRawUTF8(),sz))
@@ -117,6 +117,6 @@ private:
     juce::TextEditor search;
     juce::ListBox list;
     std::vector<int> filtered;
-    std::array<juce::Image,16> covers;
+    std::array<juce::Image,20> covers;
 };
 }

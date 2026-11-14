@@ -1,0 +1,25 @@
+name: Skell-Afar headless tests (real SkellCore, sanitizers)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  headless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned SkellCore
+        run: |
+          SHA=$(sed -n 's/.*set(SKELLCORE_REV "\([0-9a-f]\{40\}\)".*/\1/p' CMakeLists.txt | head -1)
+          test -n "$SHA"
+          git clone https://github.com/skellyruno/skell-vst-template.git ../skellcore
+          git -C ../skellcore checkout "$SHA"
+      - name: Configure (real SkellCore, ASan + UBSan)
+        run: >
+          cmake -S . -B build -DSKELL_AFAR_HEADLESS_ONLY=ON
+          -DSKELL_AFAR_REAL_SKELLCORE_DIR=$GITHUB_WORKSPACE/../skellcore/SkellCore
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+      - run: cmake --build build --parallel 2
+      - run: ctest --test-dir build --output-on-failure

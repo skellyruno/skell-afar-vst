@@ -24,6 +24,10 @@ jobs:
             libxinerama-dev libxcursor-dev libxrandr-dev libxcomposite-dev \
             libxrender-dev libgl1-mesa-dev libglu1-mesa-dev libxkbcommon-dev \
             libxkbcommon-x11-dev libgtk-3-dev
+      - name: Generate byte-identical v0.5.4 scene artwork
+        run: |
+          python -m pip install pillow==12.3.0
+          python tools/generate_assets.py
       - name: Configure real editor
         run: cmake -S . -B build-tour -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKELL_AFAR_TOUR_SCREENSHOTS=ON
       - name: Build real editor renderer

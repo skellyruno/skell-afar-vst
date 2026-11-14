@@ -1,0 +1,25 @@
+name: Skell Afar reproduce and commit scene artwork
+on:
+  push:
+    branches: [update/skell-afar-v0.5.4]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  original-art:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate deterministic art
+        run: |
+          python -m pip install pillow==12.3.0
+          python tools/generate_assets.py
+      - name: Commit regenerated scene covers to the update branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/space_15.png Assets/space_16.png Assets/space_17.png Assets/space_18.png Assets/space_19.png
+          if ! git diff --cached --quiet; then
+            git commit -m 'assets(afar): add original v0.5.4 scene covers'
+            git push origin HEAD:refs/heads/update/skell-afar-v0.5.4
+          fi
