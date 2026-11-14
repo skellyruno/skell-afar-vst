@@ -1,4 +1,8 @@
 name: SkellCore portable DSP tests
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     paths:
@@ -28,8 +32,14 @@ jobs:
         run: ctest --test-dir build-core --build-config Release --output-on-failure
       - name: CPU benchmark (non-gating measurements)
         run: ctest --test-dir build-core --build-config Release -R SkellCoreBenchmark -V
-      - name: Verify plugin generator
+      - name: Verify plugin checkout rejects template-only generator
         run: python tools/test_new_plugin.py
+      - name: Verify generator in its pinned upstream template
+        shell: bash
+        run: |
+          git clone https://github.com/skellyruno/skellcore-vst-template.git "$RUNNER_TEMP/skell-template"
+          git -C "$RUNNER_TEMP/skell-template" checkout 3306ad495c93e062e39b8abbf079534b0b53da4e
+          python "$RUNNER_TEMP/skell-template/tools/test_new_plugin.py"
 
   core-sanitizers:
     name: Linux ASan + UBSan DSP tests
