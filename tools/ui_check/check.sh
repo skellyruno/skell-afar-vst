@@ -12,6 +12,8 @@ done
 g++ -std=c++17 -O1 -Wall -Wextra -DUI_ASSETS_DIR='"Assets"' "${inc[@]}" tools/ui_check/preview.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp -o "$out/preview"
 "$out/preview" effort=.55 distance=12 angle=40 space=5 meterPeak=.6 meterDistance=12 meterClarity=.7 meterDrr=-6 > "$out/main.txt"
 python3 tools/ui_check/render.py "$out/main.txt" "$out/main.png" 1100 700 Assets
+"$out/preview" simple=1 effort=.55 distance=6 angle=20 space=12 meterPeak=.6 meterDistance=6 meterClarity=.7 meterDrr=-6 > "$out/simple.txt"
+python3 tools/ui_check/render.py "$out/simple.txt" "$out/simple.png" 1100 700 Assets
 "$out/preview" detail > "$out/detail.txt"
 python3 tools/ui_check/render.py "$out/detail.txt" "$out/detail.png" 774 489 Assets
-echo "OK: images in $out (main.png, detail.png); LAYOUT WARNING lines above, if any, need attention"
+echo "OK: images in $out (main.png, simple.png, detail.png); LAYOUT WARNING lines above, if any, need attention"

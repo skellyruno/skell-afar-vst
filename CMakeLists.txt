@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkellAfar VERSION 0.5.5 LANGUAGES C CXX)
+project(SkellAfar VERSION 0.6.0 LANGUAGES C CXX)
 
 include(FetchContent)
 set(SKELLCORE_REV "3306ad495c93e062e39b8abbf079534b0b53da4e" CACHE STRING "Immutable SkellCore template revision")
@@ -65,7 +65,7 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     GIT_TAG ${SKELLCORE_REV}
     SOURCE_SUBDIR SkellCore)
   FetchContent_MakeAvailable(SkellCore)
-  # Preserve existing repository's header-only Guided Tour integration, without changing its UI API.
+  # Preserve pre-existing Skell-Afar Guided Tour while importing the v0.6.0 UI.
   FetchContent_Declare(SkellCoreTourStyle
     GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
     GIT_TAG eb56702153c4373799a4e8e2663e0f158c0115a6
@@ -93,8 +93,8 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
   target_sources(SkellAfar PRIVATE
     Source/PluginProcessor.cpp Source/PluginProcessor.h
     Source/PluginEditor.cpp Source/PluginEditor.h
-    Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/ThroatTexture.h Source/dsp/RoomCharacter.h Source/dsp/BandFDN.h Source/dsp/WalkMotion.h
-    Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Controls.h Source/ui/DetailPanel.h)
+    Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/RoomCharacter.h Source/dsp/BandFDN.h Source/dsp/WalkMotion.h Source/dsp/ThroatTexture.h
+    Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Backdrops.h Source/ui/SimpleMode.h Source/ui/DetailPanel.h Source/ui/Controls.h)
   target_include_directories(SkellAfar BEFORE PRIVATE
     "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")
   target_compile_features(SkellAfar PRIVATE cxx_std_17)
@@ -102,7 +102,7 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
   target_link_libraries(SkellAfar PRIVATE
     SkellCore::DSP SkellCore::UI SkellAfarAssets
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra juce::juce_dsp)
-  option(SKELL_AFAR_TOUR_SCREENSHOTS "Build actual editor tour screenshot validation" OFF)
+  option(SKELL_AFAR_TOUR_SCREENSHOTS "Build real editor Guided Tour screenshot checks" OFF)
   if(SKELL_AFAR_TOUR_SCREENSHOTS)
     if(NOT TARGET SkellCore::UIRenderer)
       message(FATAL_ERROR "Pinned SkellCore UI renderer is required")

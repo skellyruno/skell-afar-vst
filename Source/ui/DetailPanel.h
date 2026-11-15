@@ -38,7 +38,8 @@ public:
         setupKnob(matchAmount,"MATCH AMT","levelMatchAmount",Kind::Absorption,"How much LEVEL MATCH keeps the voice at your input loudness (100% = fully matched, lower lets distance and effort change the volume).");
         setupCombo(occlusion,{"OPEN","DOORWAY","WALL","THICK WALL","FOLIAGE","WATER"},"occlusionType","Material between voice and mic (used with the OCCLUSION knob).");
         setupCombo(micStereo,{"MONO","XY","ORTF","BINAURAL"},"micStereo","Stereo pickup pattern of the virtual microphone.");
-        setupCombo(quality,{"ECO","NORMAL","HIGH"},"quality","ECO uses the lower-latency limiter mode. Applied when the host (re)initialises the plugin.");
+        setupCombo(quality,{"ECO","NORMAL","HIGH"},"quality","Limiter peak-detection accuracy. ECO uses less CPU; latency is the same. Applied when the host (re)initialises the plugin.");
+        setupCombo(reverbEngine,{"STANDARD","DENSE","HD"},"reverbEngine","Late-reverb engine. STANDARD: 4 lines (as before). DENSE: 8 lines. HD: 16 lines, smoother tail and a darker or brighter decay per space; uses more CPU. Switching crossfades.");
         setupToggle(delta,"DELTA","delta","Listen to only what the processing removes (difference signal).");
         setupToggle(bypassEffort,"BYPASS EFFORT TIMBRE","bypassEffort","Keep the Effort slider's level/distance behaviour but skip its timbre changes.");
         setupToggle(walkSync,"WALK SYNC","walkSync","Follow the host's beat position. Off: free-running from playback start.");
@@ -64,11 +65,11 @@ public:
         g.drawFittedText("AUTO follows the scene. Turn a bed up to add it to any space, down to trim it; OFF mutes it. Master level is the AMBIENCE knob.",
                          28,204,480,30,juce::Justification::topLeft,2);
         g.drawFittedText("Temperature and humidity set air absorption and sound speed.",540,204,210,30,juce::Justification::topLeft,2);
-        const char* captions[3] {"OCCLUSION MATERIAL","MIC STEREO PATTERN","LIMITER QUALITY"};
-        const int xs[3] {28,210,392};
-        for(int i=0;i<3;++i) g.drawText(captions[i],xs[i],290,170,12,juce::Justification::centredLeft);
-        g.drawFittedText("LIMITER QUALITY sets how finely the limiter checks peaks (Eco uses less CPU); latency is the same. "
-                         "Throat Texture uses anti-aliased saturation, so no oversampling is needed. LOCK SEED restarts the ambience from SEED when playback starts.",
+        const char* captions[4] {"OCCLUSION MATERIAL","MIC STEREO PATTERN","LIMITER QUALITY","REVERB ENGINE"};
+        const int xs[4] {28,210,392,574};
+        for(int i=0;i<4;++i) g.drawText(captions[i],xs[i],290,170,12,juce::Justification::centredLeft);
+        g.drawFittedText("REVERB ENGINE: HD uses 16 lines for a smoother tail (more CPU). LIMITER QUALITY: Eco uses less CPU, latency is the same. "
+                         "LOCK SEED restarts the ambience from SEED when playback starts.",
                          392,384,350,64,juce::Justification::topLeft,5);
     }
 
@@ -77,7 +78,7 @@ public:
         for(std::size_t i=0;i<beds.size();++i) place(beds[i],28+static_cast<int>(i)*60,86,58);
         for(std::size_t i=0;i<air.size();++i) place(air[i],538+static_cast<int>(i)*72,86,68);
         occlusion.setBounds(28,304,170,28);micStereo.setBounds(210,304,170,28);
-        quality.setBounds(392,304,170,28);
+        quality.setBounds(392,304,170,28);reverbEngine.setBounds(574,304,170,28);
         delta.setBounds(28,342,150,24);bypassEffort.setBounds(190,342,200,24);
         walkSync.setBounds(400,342,130,24);duck.setBounds(540,342,200,24);
         place(seed,28,376,64);lockSeed.setBounds(100,398,130,24);place(walkScale,236,376,64);place(matchAmount,304,376,64);
@@ -148,7 +149,7 @@ private:
     std::array<Knob,8> beds;
     std::array<Knob,3> air;
     Knob seed,walkScale,matchAmount;
-    juce::ComboBox occlusion,micStereo,quality;
+    juce::ComboBox occlusion,micStereo,quality,reverbEngine;
     juce::ToggleButton delta,bypassEffort,walkSync,duck,lockSeed;
     juce::TextButton closeButton;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;

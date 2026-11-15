@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "ui/SimpleMode.h"
 #include <SkellCore/UI.h>
 #include "ui/DetailPanel.h"
 #include <BinaryData.h>
@@ -76,8 +77,7 @@ void setParam(SkellAfarAudioProcessor& processor,const char* id,float value) {
 
 class SkellAfarAudioProcessorEditor::Surface final : public juce::Component, private juce::Timer {
 public:
-    Surface(SkellAfarAudioProcessor& p,std::function<void(float)> scaleCallback,
-            std::function<void()> tourCallback)
+    Surface(SkellAfarAudioProcessor& p,std::function<void(float)> scaleCallback, std::function<void()> tourCallback)
       : processor(p),onScale(std::move(scaleCallback)),onShowTour(std::move(tourCallback)),browser(),sceneView(p),scenePad(p),meters(p),detail(p) {
         look=std::make_unique<afar::ui::AfarLookAndFeel>();
         setLookAndFeel(look.get());
@@ -161,8 +161,6 @@ public:
             juce::PopupMenu m;
             m.addItem(1,juce::String::fromUTF8("Small \xc2\xb7 75%"));m.addItem(2,juce::String::fromUTF8("Medium \xc2\xb7 100%"));
             m.addItem(3,juce::String::fromUTF8("Large \xc2\xb7 125%"));m.addItem(4,juce::String::fromUTF8("XL \xc2\xb7 150%"));
-            m.addSeparator();
-            m.addItem(5,"Help / Show Tutorial");
             // Never capture `this` inside a nested lambda initializer: MSVC binds
             // that `this` to the outer closure, rather than to Surface.
             const juce::Component::SafePointer<Surface> safeView(this);
@@ -184,7 +182,6 @@ public:
         moreButton.setTooltip("Ambience beds, air model, routing and engine options.");
         moreButton.onClick=[this]{toggleDetail();};
         detail.onClose=[this]{toggleDetail();};
-        // Keep the detail panel attached to the real JUCE component tree.
         addAndMakeVisible(detail);
         detail.setVisible(false);
         toggleAB.setTooltip("Switch between two complete plugin states (A / B).");
@@ -200,34 +197,40 @@ public:
             activeSlot=other;
             toggleAB.setButtonText(activeSlot==0?"A":"B");
         };
+        simple=static_cast<bool>(processor.editorState.getProperty("simple",false));
+        addChildComponent(strip);addAndMakeVisible(modeSwitch);
+        strip.onSelect=[this](int id){setParam(processor,"space",static_cast<float>(id));};
+        strip.setSelectedSpace(static_cast<int>(processor.parameters.getRawParameterValue("space")->load()));
+        modeSwitch.onChange=[this](bool wantSimple){setSimple(wantSimple);};
+        applyMode();
         startTimerHz(20);
     }
+#if SKELL_AFAR_GUIDED_TOUR
     std::vector<skellcore::ui::GuidedTourStep> tourSteps() {
         std::vector<skellcore::ui::GuidedTourStep> steps;
-        steps.emplace_back(&presetList,"START WITH A PRESET",
-            "Pick a location or sound to get started, then tailor it to your vocal.");
-        steps.emplace_back(&browser,"CHOOSE A SPACE",
-            "Choose where your vocal lives: each space changes its acoustic character.");
-        steps.emplace_back(&effort,"VOCAL EFFORT",
-            "Move from whisper to shout to set the source performance.");
+        steps.emplace_back(&modeSwitch,"SIMPLE OR PRO",
+            "Simple keeps the stage and environment strip in focus. Pro reveals all acoustic controls.");
+        steps.emplace_back(&presetList,"OPTIONAL PRESETS",
+            "No preset is selected on startup. Choose a factory sound whenever you want.");
+        steps.emplace_back(&sceneView,"VOICE IN SPACE",
+            "Place the voice in the scene without changing your track's beat alignment.");
+        steps.emplace_back(&effort,"EFFORT",
+            "Whisper to shout: shape the recorded voice with gentle tonal processing.");
         steps.emplace_back(&distance,"DISTANCE",
-            "Move your voice nearer or farther from the microphone in metres.");
-        steps.emplace_back(&sceneView,"VISUALIZE THE SPACE",
-            "Use the visual scene and position controls to understand the environment.");
-        steps.emplace_back(&moreButton,"MORE DETAILS",
-            "MORE opens ambience beds, routing and fine acoustic settings.");
+            "Distance changes perceived placement. Beat Aligned is on by default.");
+        steps.emplace_back(&moreButton,"MORE OPTIONS",
+            "Open advanced ambience and reverb controls in Pro mode.",
+            [this]{if(simple)setSimple(false);});
         steps.emplace_back(&detail,"ADVANCED SOUND DESIGN",
-            "Adjust the optional detail controls, then select BACK to return.",
-            [this]{if(!detail.isVisible())toggleDetail();});
-        steps.emplace_back(&save,"SAVE YOUR SOUND",
-            "Save the settings as a named preset. Replay this guide from SET.");
+            "Choose a reverb engine or fine-tune ambience here.",
+            [this]{if(simple)setSimple(false);if(!detail.isVisible())toggleDetail();});
         return steps;
     }
     skellcore::ui::GuidedTourPalette tourPalette() const {
         return {afar::ui::Theme::green,afar::ui::Theme::panelRaised,
-                afar::ui::Theme::bone,afar::ui::Theme::muted,
-                juce::Colour(0xd9000000)};
+                afar::ui::Theme::bone,afar::ui::Theme::muted,juce::Colour(0xd9000000)};
     }
+#endif
     ~Surface() override {
         stopTimer();
         setLookAndFeel(nullptr);
@@ -237,21 +240,32 @@ public:
         using namespace afar::ui;
         g.fillAll(Theme::background);
         if(bg.isValid())g.drawImageAt(bg,0,0);
-        g.setColour(Theme::panelRaised);g.fillRect(0,0,getWidth(),Theme::topBar);
-        g.setColour(Theme::greenDim);g.drawHorizontalLine(Theme::topBar,0.f,static_cast<float>(getWidth()));
-        g.setColour(Theme::green.withAlpha(.72f));
-        g.fillRoundedRectangle(318.f,54.f,474.f,2.f,1.f);
-        g.fillRoundedRectangle(825.f,54.f,247.f,2.f,1.f);
+        {   // top bar: brushed-glass gradient, light on the upper edge, shadow cast onto the content below
+            juce::ColourGradient bar(juce::Colour(0xff1f262b),0.f,0.f,juce::Colour(0xff12171a),0.f,static_cast<float>(Theme::topBar),false);
+            g.setGradientFill(bar);g.fillRect(0,0,getWidth(),Theme::topBar);
+            g.setColour(juce::Colour(0x14ffffff));g.drawHorizontalLine(1,0.f,static_cast<float>(getWidth()));
+            juce::ColourGradient cast(juce::Colour(0x66000000),0.f,static_cast<float>(Theme::topBar),juce::Colour(0x00000000),0.f,static_cast<float>(Theme::topBar+12),false);
+            g.setGradientFill(cast);g.fillRect(0,Theme::topBar,getWidth(),12);
+            g.setColour(Theme::line);g.drawHorizontalLine(Theme::topBar-1,0.f,static_cast<float>(getWidth()));
+            const juce::Rectangle<float> segs[2]={simple?juce::Rectangle<float>(20.f,54.f,1060.f,1.6f):juce::Rectangle<float>(318.f,54.f,474.f,1.6f),
+                                                  simple?juce::Rectangle<float>():juce::Rectangle<float>(825.f,54.f,247.f,1.6f)};
+            for(const auto& seg:segs) {
+                if(seg.getWidth()<1.f) continue;
+                g.setColour(Theme::green.withAlpha(.10f));g.fillRoundedRectangle(seg.expanded(0.f,2.f),2.f);
+                g.setColour(Theme::green.withAlpha(.65f));g.fillRoundedRectangle(seg,.8f);
+            }
+        }
         {   // skull glow follows the output level
             const float lv=std::clamp(processor.meterPeak.load(std::memory_order_relaxed),0.f,1.f);
             juce::ColourGradient glow(Theme::green.withAlpha(.05f+.32f*lv),76.f,29.f,Theme::green.withAlpha(0.f),76.f,30.f,true);
             g.setGradientFill(glow);g.fillEllipse(46.f,0.f,60.f,57.f);
         }
         if(logo.isValid())g.drawImage(logo,53,5,47,47,0,0,96,96);
-        g.setColour(Theme::greenLight);g.setFont(titleFont(21.f));
+        g.setColour(Theme::bone);g.setFont(titleFont(21.f));
         g.drawText("SKELL-AFAR",111,7,264,29,juce::Justification::centredLeft);
-        g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(10.f)));
+        g.setColour(Theme::green.withAlpha(.8f));g.setFont(titleFont(8.5f));
         g.drawText("FEEL THE DISTANCE",113,33,260,14,juce::Justification::centredLeft);
+        if(simple){paintSimple(g);return;}
         panel(g,{314.f,417.f,489.f,144.f});
         sectionTitle(g,"EFFORT",327.f,422.f,200.f);
         {
@@ -285,11 +299,10 @@ public:
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(10.f)));
         g.drawText("PATH PRESET",832,384,210,13,juce::Justification::centredLeft);
         g.drawText("LENGTH (BARS)",832,437,230,13,juce::Justification::centredLeft);
-        g.setColour(Theme::greenDim.withAlpha(.6f));g.drawHorizontalLine(486,832.f,1068.f);
+        hairline(g,832.f,486.f,1068.f);
         {   // walk path preview: distance over time (up = farther), lit when WALK is on
             const juce::Rectangle<float> r(990.f,399.f,76.f,28.f);
-            g.setColour(Theme::background);g.fillRoundedRectangle(r,5.f);
-            g.setColour(Theme::greenDim);g.drawRoundedRectangle(r,5.f,1.f);
+            inset(g,r,5.f);
             const int wp=static_cast<int>(processor.parameters.getRawParameterValue("walkPath")->load());
             juce::Path curve;
             for(int i=0;i<=40;++i) {
@@ -305,10 +318,13 @@ public:
                 const float px=r.getX()+6.f+(r.getWidth()-12.f)*ph,py=r.getBottom()-5.f-(r.getHeight()-10.f)*v;
                 if(i==0) curve.startNewSubPath(px,py); else curve.lineTo(px,py);
             }
-            g.setColour(processor.parameters.getRawParameterValue("walkOn")->load()>.5f?Theme::green:Theme::greenDim.brighter(.5f));
-            g.strokePath(curve,juce::PathStrokeType(1.6f));
+            const bool walking=processor.parameters.getRawParameterValue("walkOn")->load()>.5f;
+            if(walking){g.setColour(Theme::green.withAlpha(.18f));g.strokePath(curve,juce::PathStrokeType(4.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
+            g.setColour(walking?Theme::green:Theme::faint);
+            g.strokePath(curve,juce::PathStrokeType(1.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         }
         panel(g,{314.f,575.f,774.f,115.f});
+        g.setColour(Theme::lineSoft);g.drawVerticalLine(414,586.f,679.f);g.drawVerticalLine(818,586.f,679.f);   // group dividers
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(9.5f)));
         g.drawText("MIC DEVICE",829,583,112,14,juce::Justification::centredLeft);
         g.drawText("RECORDED AS",955,583,116,14,juce::Justification::centredLeft);
@@ -328,6 +344,22 @@ public:
         }
     }
     void resized() override {
+        settings.setBounds(10,12,37,30);
+        modeSwitch.setBounds(294,15,90,26);
+        prevPreset.setBounds(388,13,24,28);
+        presetList.setBounds(416,13,218,28);
+        nextPreset.setBounds(638,13,24,28);
+        power.setBounds(1001,15,86,27);
+        if(simple) {
+            sceneView.setBounds(20,72,1060,402);
+            strip.setBounds(20,484,1060,138);
+            effort.setBounds(122,641,404,34);
+            distance.setBounds(652,641,396,34);
+            randomise.setBounds(672,13,58,28);
+            detail.setBounds(314,72,774,489);
+            return;
+        }
+        randomise.setBounds(736,13,55,28);
         browser.setBounds(afar::ui::Theme::browserX,afar::ui::Theme::browserY,afar::ui::Theme::browserW,afar::ui::Theme::browserH);
         sceneView.setBounds(320,72,480,332);
         scenePad.setBounds(820,72,260,260);
@@ -348,29 +380,63 @@ public:
         }
         mic.setBounds(828,600,112,27);
         recorded.setBounds(950,600,122,27);
-        settings.setBounds(10,12,37,30);
         moreButton.setBounds(858,13,78,28);
         detail.setBounds(314,72,774,489);
-        prevPreset.setBounds(388,13,24,28);
-        presetList.setBounds(416,13,218,28);
-        nextPreset.setBounds(638,13,24,28);
         save.setBounds(672,13,58,28);
-        randomise.setBounds(736,13,55,28);
         toggleAB.setBounds(798,13,50,28);
-        power.setBounds(1001,15,86,27);
     }
 private:
     void timerCallback() override {
         browser.setSelectedSpace(static_cast<int>(processor.parameters.getRawParameterValue("space")->load()));
+        strip.setSelectedSpace(static_cast<int>(processor.parameters.getRawParameterValue("space")->load()));
         const auto& pv=processor.parameters;
         const float e=pv.getRawParameterValue("effort")->load(),d=pv.getRawParameterValue("distance")->load();
         const float t=pv.getRawParameterValue("throatTexture")->load();
         const int as=static_cast<int>(pv.getRawParameterValue("recordedAs")->load());
-        if(e!=lastEffort||d!=lastDistance||as!=lastRecorded){lastEffort=e;lastDistance=d;lastRecorded=as;repaint(314,417,489,144);}
+        if(e!=lastEffort||d!=lastDistance||as!=lastRecorded){lastEffort=e;lastDistance=d;lastRecorded=as;repaint(314,417,489,144);if(simple)repaint(20,630,1060,60);}
         if(t!=lastTexture){lastTexture=t;repaint(317,574,93,115);}
         const int ws=static_cast<int>(pv.getRawParameterValue("walkPath")->load())*2+(pv.getRawParameterValue("walkOn")->load()>.5f?1:0);
         if(ws!=lastWalkState){lastWalkState=ws;repaint(985,395,90,36);}
         repaint(46,0,60,57);
+    }
+    void setSimple(bool wantSimple) {
+        simple=wantSimple;
+        processor.editorState.setProperty("simple",simple,nullptr);
+        applyMode();
+    }
+    // SIMPLE: the stage and the environments plus effort/distance. PRO: everything.
+    void applyMode() {
+        modeSwitch.setSimple(simple);
+        const bool pro=!simple;
+        for(juce::Component* c:{static_cast<juce::Component*>(&browser),static_cast<juce::Component*>(&scenePad),static_cast<juce::Component*>(&walkEnabled),
+                                static_cast<juce::Component*>(&walkPath),static_cast<juce::Component*>(&walkLength),static_cast<juce::Component*>(&meters),
+                                static_cast<juce::Component*>(&delayToggle),static_cast<juce::Component*>(&muteAmbience),static_cast<juce::Component*>(&levelMatch),
+                                static_cast<juce::Component*>(&throatTexture),static_cast<juce::Component*>(&mic),static_cast<juce::Component*>(&recorded),
+                                static_cast<juce::Component*>(&save),static_cast<juce::Component*>(&toggleAB),static_cast<juce::Component*>(&moreButton)})
+            c->setVisible(pro);
+        for(auto& k:knobs) k.setVisible(pro);
+        for(auto& l:knobLabels) l.setVisible(pro);
+        strip.setVisible(simple);
+        if(simple){detail.setVisible(false);moreButton.setButtonText("MORE");}
+        resized();
+        repaint();
+    }
+    void paintSimple(juce::Graphics& g) {
+        using namespace afar::ui;
+        panel(g,{20.f,630.f,1060.f,60.f});
+        g.setColour(Theme::lineSoft);g.drawVerticalLine(550,642.f,678.f);
+        const auto& pv=processor.parameters;
+        const float ev=pv.getRawParameterValue("effort")->load();
+        const char* word=ev<.15f?"WHISPER":ev<.38f?"SOFT":ev<.62f?"NORMAL":ev<.85f?"LOUD":"SHOUT";
+        g.setColour(Theme::bone);g.setFont(titleFont(12.f));g.drawText("EFFORT",38,642,80,16,juce::Justification::centredLeft);
+        g.setColour(Theme::ice.interpolatedWith(Theme::fire,ev));g.setFont(titleFont(9.5f));g.drawText(word,38,660,80,14,juce::Justification::centredLeft);
+        g.setColour(Theme::ice);g.setFont(captionFont(9.f));g.drawText("WHISPER",132,674,80,12,juce::Justification::centredLeft);
+        g.setColour(Theme::fire);g.drawText("SHOUT",440,674,80,12,juce::Justification::centredRight);
+        const float metres=pv.getRawParameterValue("distance")->load();
+        g.setColour(Theme::bone);g.setFont(titleFont(12.f));g.drawText("DISTANCE",568,642,80,16,juce::Justification::centredLeft);
+        g.setColour(Theme::muted);g.setFont(captionFont(9.5f));g.drawText(juce::String(afar::arrivalMilliseconds(metres),1)+" ms",568,660,80,14,juce::Justification::centredLeft);
+        g.setColour(Theme::muted);g.setFont(captionFont(9.f));g.drawText("IN YOUR EAR",662,674,100,12,juce::Justification::centredLeft);
+        g.setColour(Theme::violet);g.drawText("FAR AWAY",944,674,100,12,juce::Justification::centredRight);
     }
     void toggleDetail() {
         const bool show=!detail.isVisible();
@@ -449,7 +515,7 @@ private:
             }
         }
         presetList.setText(select,juce::dontSendNotification);
-        // Leave the preset selection empty until the user explicitly chooses one.
+        // Keep blank until the user selects a factory or user preset.
     }
     void stepPreset(int delta) {
         const int n=presetList.getNumItems();
@@ -480,7 +546,7 @@ private:
     }
     void saveCurrentPreset() {
         auto current=presetList.getText();
-        if(current.isEmpty() || current=="NO PRESET" || current.startsWith("INIT")) current="My Preset";
+        if(current.isEmpty() || current.startsWith("INIT")) current="My Preset";
         auto* window=new juce::AlertWindow("Save preset","Name your preset:",juce::MessageBoxIconType::NoIcon,this);
         window->addTextEditor("name",juce::File::createLegalFileName(current));
         window->addButton("Save",1,juce::KeyPress(juce::KeyPress::returnKey));
@@ -500,6 +566,9 @@ private:
     afar::ui::ScenePad scenePad;
     afar::ui::MeterView meters;
     afar::ui::DetailPanel detail;
+    afar::ui::EnvironmentStrip strip;
+    afar::ui::ModeSwitch modeSwitch;
+    bool simple=false;
     juce::TextButton moreButton;
     juce::TooltipWindow tooltip {this,600};
     int lastWalkState=-1;
@@ -535,28 +604,42 @@ SkellAfarAudioProcessorEditor::SkellAfarAudioProcessorEditor(SkellAfarAudioProce
     getConstrainer()->setFixedAspectRatio(static_cast<double>(afar::ui::Theme::designW)/afar::ui::Theme::designH);
     const float factor=std::clamp(static_cast<float>(static_cast<double>(p.editorState.getProperty("scale",.75))),.75f,1.5f);
     setSize(juce::roundToInt(afar::ui::Theme::designW*factor),juce::roundToInt(afar::ui::Theme::designH*factor));
+#if SKELL_AFAR_GUIDED_TOUR
     guidedTour=std::make_unique<skellcore::ui::GuidedTourController>(*this,"skell-afar-vst",1);
     showGuidedTour(true);
+#endif
 }
 SkellAfarAudioProcessorEditor::~SkellAfarAudioProcessorEditor(){
+#if SKELL_AFAR_GUIDED_TOUR
     guidedTour.reset();
+#endif
     setLookAndFeel(nullptr);
 }
 void SkellAfarAudioProcessorEditor::showGuidedTour(bool firstRun) {
+#if SKELL_AFAR_GUIDED_TOUR
     if(!guidedTour || !surface)return;
     guidedTour->setPalette(surface->tourPalette());
     guidedTour->setSteps(surface->tourSteps());
     if(firstRun)guidedTour->startIfFirstRun();
     else guidedTour->replay();
+#else
+    (void) firstRun;
+#endif
 }
 void SkellAfarAudioProcessorEditor::dismissTourForScreenshot() {
-    if (guidedTour) guidedTour->dismiss();
+#if SKELL_AFAR_GUIDED_TOUR
+    if(guidedTour)guidedTour->dismiss();
+#endif
 }
 bool SkellAfarAudioProcessorEditor::replayTourForScreenshot() {
-    if (!guidedTour || !surface) return false;
+#if SKELL_AFAR_GUIDED_TOUR
+    if(!guidedTour || !surface)return false;
     guidedTour->setPalette(surface->tourPalette());
     guidedTour->setSteps(surface->tourSteps());
     return guidedTour->replay();
+#else
+    return false;
+#endif
 }
 void SkellAfarAudioProcessorEditor::resized() {
     if(!surface)return;

@@ -34,25 +34,27 @@ static void drawWidget(juce::Component& c, juce::Graphics& g) {
             laf->drawLinearSlider(g, lay.sliderBounds.x, lay.sliderBounds.y, lay.sliderBounds.w, lay.sliderBounds.h, pos, pos, pos, s->getSliderStyle(), *s);
             tb = lay.textBoxBounds.toFloat();
         }
-        g.setColour(Theme::panel); g.fillRect(tb); g.setColour(Theme::greenDim); g.drawRect(tb, 1.f);
+        afar::ui::inset(g, tb, 4.f);   // what AfarLookAndFeel::drawLabel paints for the value box
         g.setColour(Theme::bone); g.setFont(Font(FontOptions(s->getSliderStyle() == Slider::LinearHorizontal ? 12.5f : 10.5f)));
         g.drawText(s->valueText(), tb, Justification::centred);
     } else if (auto* l = dynamic_cast<Label*>(&c)) {
-        g.setColour(l->colour); g.setFont(l->font); g.drawText(l->text, juce::Rectangle<float>(0.f, 0.f, w, h), l->just);
+        if (laf) laf->drawLabel(g, *l);
+        else { g.setColour(l->colour); g.setFont(l->font); g.drawText(l->text, juce::Rectangle<float>(0.f, 0.f, w, h), l->just); }
     } else if (auto* t = dynamic_cast<ToggleButton*>(&c)) {
         if (laf) laf->drawToggleButton(g, *t, false, false);
     } else if (auto* b = dynamic_cast<TextButton*>(&c)) {
         const auto bg = b->colours.count(TextButton::buttonColourId) ? b->colours[TextButton::buttonColourId] : Theme::panelRaised;
         const auto fg = b->colours.count(TextButton::textColourOffId) ? b->colours[TextButton::textColourOffId] : Theme::bone;
-        box(g, {0.f, 0.f, w, h}, bg, Theme::greenDim.brighter(.2f), 4.f);
-        g.setColour(fg); g.setFont(Font(FontOptions(std::min(16.f, h * .6f)))); g.drawText(b->text, juce::Rectangle<float>(0.f, 0.f, w, h), Justification::centred);
+        if (laf) { laf->drawButtonBackground(g, *b, bg, false, false); g.setFont(laf->getTextButtonFont(*b, c.getHeight())); }
+        else { box(g, {0.f, 0.f, w, h}, bg, Theme::line, 4.f); g.setFont(Font(FontOptions(std::min(16.f, h * .6f)))); }
+        g.setColour(fg); g.drawText(b->text, juce::Rectangle<float>(0.f, 0.f, w, h), Justification::centred);
     } else if (auto* cb = dynamic_cast<ComboBox*>(&c)) {
-        box(g, {0.f, 0.f, w, h}, Theme::panelRaised, Theme::greenDim, 3.f);
-        g.setColour(Theme::bone); g.setFont(Font(FontOptions(std::min(16.f, h * .6f))));
-        g.drawText(cb->text, juce::Rectangle<float>(8.f, 0.f, w - 30.f, h), Justification::centredLeft);
-        g.setColour(Theme::greenLight); g.drawLine(w - 20.f, h * .5f - 2.f, w - 14.f, h * .5f + 3.f, 1.6f); g.drawLine(w - 14.f, h * .5f + 3.f, w - 8.f, h * .5f - 2.f, 1.6f);
+        if (laf) laf->drawComboBox(g, c.getWidth(), c.getHeight(), false, 0, 0, 0, 0, *cb);
+        else box(g, {0.f, 0.f, w, h}, Theme::panelRaised, Theme::line, 3.f);
+        g.setColour(Theme::bone); g.setFont(laf ? laf->getComboBoxFont(*cb) : Font(FontOptions(std::min(16.f, h * .6f))));
+        g.drawText(cb->text, juce::Rectangle<float>(8.f, 0.f, w - 36.f, h), Justification::centredLeft);
     } else if (dynamic_cast<TextEditor*>(&c)) {
-        box(g, {0.f, 0.f, w, h}, Theme::panelRaised, Theme::greenDim, 2.f);
+        afar::ui::inset(g, {0.f, 0.f, w, h}, 5.f);
         g.setColour(Theme::muted); g.setFont(Font(FontOptions(13.f))); g.drawText("Search spaces...", juce::Rectangle<float>(9.f, 0.f, w - 9.f, h), Justification::centredLeft);
     } else if (auto* lb = dynamic_cast<ListBox*>(&c)) {
         if (!lb->model) return;
@@ -75,6 +77,7 @@ static void renderTree(juce::Component& c) {
         renderTree(*child);
         std::printf("POP\n");
     }
+    c.paintOverChildren(g);
 }
 
 int main(int argc, char** argv) {
@@ -92,6 +95,7 @@ int main(int argc, char** argv) {
         else if (key == "meterClarity") processor.meterClarity = v;
         else if (key == "meterDrr") processor.meterDrr = v;
         else if (key == "meterEffort") processor.meterEffort = v;
+        else if (key == "simple") processor.editorState.setProperty("simple", v > .5f, nullptr);   // SIMPLE mode
         else processor.parameters.getRawParameterValue(key)->store(v);
     }
     if (detail) {
