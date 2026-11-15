@@ -22,7 +22,7 @@ for i in range(20):
     assert (root/f'Assets/space_{i:02d}.png').is_file()
     assert f'Assets/space_{i:02d}.png' in cmake
 assert cmake.count('GIT_TAG ${SKELLCORE_REV}') == 1
-assert '3306ad495c93e062e39b8abbf079534b0b53da4e' in cmake
+assert '7694ffee5880aed050c33d713b310f853e13d096' in cmake
 assert re.search(r'std::array<Preset,45>',editor)
 assert re.search(r'std::array<SpaceSpec, 20>',model)
 for param in ['effort','distance','power','space','micType','walkOn','mix','recordedAs','airAbsorption','throatTexture']:
@@ -47,6 +47,12 @@ assert '"NO PRESET"' in processor
 assert '"NO PRESET"' in editor and 'setSelectedId(1,juce::dontSendNotification)' not in editor
 assert '"ambience","Ambience dB",-60.f,12.f,-34.f' in processor
 assert 'dbGain(p.ambienceDb)*.22f' in (root/'Source/dsp/SceneDSP.h').read_text()
-assert 'SkellCoreTourStyle' in cmake
+assert 'SkellCoreTourStyle' not in cmake
 assert 'GuidedTourController' in editor
 assert 'addAndMakeVisible(detail)' in editor
+
+# Shared SkellCore v0.7.0 is the sole production FDN implementation.
+fdn = (root/'Source/dsp/BandFDN.h').read_text()
+assert '#include <SkellCore/FDN.h>' in fdn and 'using skellcore::BandFDN' in fdn
+assert 'class BandFDN' not in fdn
+assert 'skellcore-vst-template.git' in cmake

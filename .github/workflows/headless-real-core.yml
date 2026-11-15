@@ -17,7 +17,7 @@ jobs:
         run: |
           SHA=$(sed -n 's/.*set(SKELLCORE_REV "\([0-9a-f]\{40\}\)".*/\1/p' CMakeLists.txt | head -1)
           test -n "$SHA"
-          git clone https://github.com/skellyruno/skell-vst-template.git ../skellcore
+          git clone https://github.com/skellyruno/skellcore-vst-template.git ../skellcore
           git -C ../skellcore checkout "$SHA"
       - name: Configure (real SkellCore, ASan + UBSan)
         run: >

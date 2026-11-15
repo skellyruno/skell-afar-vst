@@ -1,3 +1,5 @@
+> **Historical status note (superseded for v0.7 integration):** this document records why an earlier v0.6.0 draft kept the old SkellCore pin and vendored FDN. The separate draft [SkellCore v0.7 integration](SDK_V070_INTEGRATION.md) pins the verified PR #30 commit and removes the vendored production FDN. Keep both records for auditability.
+
 # Skell-Afar v0.6.0 integration notes — 2026-11-15
 
 ## Scope

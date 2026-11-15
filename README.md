@@ -25,7 +25,7 @@ The 16-line per-band FDN, waveguide tube geometry, high-order image-source refle
 
 ## SkellCore provenance / reproducibility
 
-The template repo is `https://github.com/skellyruno/skell-vst-template` and **SkellCore is pinned to commit** `3306ad495c93e062e39b8abbf079534b0b53da4e` in `CMakeLists.txt`. This plugin *does not copy* SkellCore's DSP sources; CMake fetches its `SkellCore` subdirectory as a dependency. Code links `SkellCore::DSP`, `SkellCore::UI`, and uses `skellcore::FDNReverb` plus `skellcore::TruePeakLimiter`; headers from `SkellCore::UI` remain available for further shared components. Respect licenses and provenance noted in SkellCore's `SOURCE_PROVENANCE.md`.
+The shared SDK repo is `https://github.com/skellyruno/skellcore-vst-template` and **SkellCore is pinned to a v0.7.0 draft revision** `7694ffee5880aed050c33d713b310f853e13d096` in `CMakeLists.txt`. This plugin *does not copy* SkellCore's DSP sources; CMake fetches its `SkellCore` subdirectory as a dependency. Code links `SkellCore::DSP`, `SkellCore::UI`, and uses `skellcore::FDNReverb` plus `skellcore::TruePeakLimiter`; headers from `SkellCore::UI` remain available for further shared components. Respect licenses and provenance noted in SkellCore's `SOURCE_PROVENANCE.md`.
 
 ## Build
 
@@ -139,7 +139,7 @@ The headless tests were originally written against a behavioural stub (`tests/st
 ## v0.5.5: selectable reverb engine (Standard / Dense / HD)
 New MORE-panel option **REVERB ENGINE** (parameter `reverbEngine`, default Standard so existing sessions sound as before):
 - **Standard:** the SkellCore 4-line FDN used until now.
-- **Dense:** 8-line band-split FDN. **HD:** 16-line band-split FDN (`Source/dsp/BandFDN.h`, vendored from SkellCore v0.7.0 `FDN.h`; replace with the SkellCore include once the pin is bumped).
+- **Dense:** 8-line band-split FDN. **HD:** 16-line band-split FDN (directly supplied by SkellCore v0.7.0 `FDN.h`, with a one-line adapter in `Source/dsp/BandFDN.h`).
 - Dense/HD take a separate **low-band and 4 kHz decay time per space**: the low band is the space's RT60 (times SIZE); the 4 kHz decay is derived from the same absorption the 4-line engine's damping applies, then scaled by the space's own upper roll-off (`SceneDSP::highBandDecay`), so dark rooms (Cave, Cellar) get darker tails and bright ones (Field, Canyon) brighter.
 - Switching is **runtime and crossfaded (~80 ms)**; the new engine starts from silence, so switching mid-tail drops the old tail's later part. No re-prepare needed. All three engines are allocated at prepare (about 1 MB extra at 192 kHz).
 - **Measured (real SkellCore, tests/test_reverb_engine.cpp):** loudness vs Standard within 1.1 dB (Dense) / 1.5 dB (HD) in all 20 spaces with Level Match off; no click when switching; deterministic; latency unchanged. Echo density at 150 ms in SkellCore's own test: 4-line 0.06, 8-line 0.16, 16-line 0.23 (noise = 0.317). **Smoother tail in the plugin is only modestly demonstrated** (envelope fluctuation of the Cathedral tail 2.5 dB std Standard vs 2.3 HD); listen before trusting it.
@@ -169,4 +169,11 @@ The new Simple/Pro presentation, 20 scene artwork, and Standard/Dense/HD reverb 
 
 Restored regression tests: `SkellAfarStartupArrival` and `SkellAfarWalkMotion`. Run `cmake -S . -B build-headless -DSKELL_AFAR_HEADLESS_ONLY=ON -DCMAKE_BUILD_TYPE=Release`, `cmake --build build-headless`, then `ctest --test-dir build-headless --output-on-failure`. The default headless configuration uses a test-only SkellCore stub: it does not verify Windows VST3, the real SkellCore, FL Studio, plugin delay compensation, or listening quality.
 
-**Shared SDK note:** the v0.7.0 SkellCore archive listed in the handoff was not included with this upload, and the connected `skellcore-vst-template` main branch still declares v0.6.0 without `FDN.h` at audit time. The vendored `Source/dsp/BandFDN.h` is therefore retained and no unverified dependency pin change is made. Replace with a verified SkellCore include in its own integration pass only after obtaining the exact v0.7.0 commit.
+**Shared SDK integration note (draft):** this branch pins the exact source import from SkellCore draft PR #30 (`7694ffee5880aed050c33d713b310f853e13d096`), whose `FDN.h` and limiter changes passed GitHub CI. The pin references an immutable commit that is not merged to SDK main. The generic v0.7.0 limiter has known intersample over-ceiling findings (SkellCore issue #32); keep this integration in draft pending actual DSP/host verification.
+
+## SkellCore v0.7.0 dependency integration (draft; release gates pending)
+- Pinned immutable commit `7694ffee5880aed050c33d713b310f853e13d096` from [SkellCore draft PR #30](https://github.com/skellyruno/skellcore-vst-template/pull/30). This branch holds the user-supplied v0.7.0 FDN and limiter rewrite; SDK `main` is unchanged.
+- `BandFDN.h` is now a thin include alias for `<SkellCore/FDN.h>`. No copied production 8/16-line FDN remains in Afar.
+- Dropped the obsolete SkellCoreTourStyle shadow include path. The pinned v0.7.0 commit has the same `GuidedTour.h` blob SHA, so the old tour remains available without overriding newer `Core.h`.
+- Offline headless tests retain a *test-only* FDN stand-in in `tests/stub/SkellCore/FDN.h`; only real-core CI tests the actual new DSP.
+- Known release blocker: [issue #32](https://github.com/skellyruno/skellcore-vst-template/issues/32) documents generic limiter intersample overshoot. Afar's sample ceiling guard is not a true-peak certificate. Never merge before real host/signal acceptance.
