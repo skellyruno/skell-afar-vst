@@ -22,7 +22,7 @@ for i in range(20):
     assert (root/f'Assets/space_{i:02d}.png').is_file()
     assert f'Assets/space_{i:02d}.png' in cmake
 assert cmake.count('GIT_TAG ${SKELLCORE_REV}') == 1
-assert re.search(r'set\(SKELLCORE_REV \"[a-f0-9]{40}\"', cmake)
+assert '3306ad495c93e062e39b8abbf079534b0b53da4e' in cmake
 assert re.search(r'std::array<Preset,45>',editor)
 assert re.search(r'std::array<SpaceSpec, 20>',model)
 for param in ['effort','distance','power','space','micType','walkOn','mix','recordedAs','airAbsorption','throatTexture']:
@@ -33,17 +33,20 @@ assert (root/'.github/workflows/build-windows.yml').is_file()
 assert (root/'.github/workflows/headless-real-core.yml').is_file()
 assert 'SKELL_AFAR_REAL_SKELLCORE_DIR' in cmake and cmake.count('${AFAR_CORE_INC}')>=5
 assert 'kCeilingLin' in (root/'Source/dsp/SceneDSP.h').read_text()
-assert 'VERSION 0.5.5' in cmake and 'version `0.5.4`' in (root/'README.md').read_text()
+assert 'VERSION 0.6.0' in cmake and 'version `0.6.0`' in (root/'README.md').read_text()
+assert (root/'Source/ui/Backdrops.h').is_file() and (root/'Source/ui/SimpleMode.h').is_file() and 'EnvironmentStrip' in (root/'Source/PluginEditor.cpp').read_text() and 'drawBackdrop(' in (root/'Source/ui/SceneView.h').read_text()
+assert (root/'Source/dsp/BandFDN.h').is_file() and (root/'tests/test_reverb_engine.cpp').is_file() and 'reverbEngine' in (root/'Source/PluginProcessor.cpp').read_text() and 'Reverb_engine' in cmake
 print('PASS: 20 metadata spaces, 20 covers, 45 preset declaration, dependency pin, parameter declarations, CI config')
 
-assert 'SkellCoreTourStyle' in cmake and 'GuidedTourController' in editor
-assert 'addAndMakeVisible(detail)' in editor
-
-# v0.5.5 DSP regression coverage and no-auto-preset invariant.
-assert 'NO PRESET' in editor and 'NO PRESET' in processor
-assert 'SkellAfarWalkMotion' in cmake and 'SkellAfarStartupArrival' in cmake
-assert 'Reverb_engine' in cmake and 'reverbEngine' in processor
-assert (root/'Source/dsp/BandFDN.h').is_file()
+# v0.5.5 DSP regression safeguards integrated into v0.6.0.
 assert (root/'Source/dsp/WalkMotion.h').is_file()
 assert (root/'tests/test_walk_motion.cpp').is_file()
 assert (root/'tests/test_startup_and_arrival.cpp').is_file()
+assert 'SkellAfarStartupArrival' in cmake and 'SkellAfarWalkMotion' in cmake
+assert '"NO PRESET"' in processor
+assert '"NO PRESET"' in editor and 'setSelectedId(1,juce::dontSendNotification)' not in editor
+assert '"ambience","Ambience dB",-60.f,12.f,-34.f' in processor
+assert 'dbGain(p.ambienceDb)*.22f' in (root/'Source/dsp/SceneDSP.h').read_text()
+assert 'SkellCoreTourStyle' in cmake
+assert 'GuidedTourController' in editor
+assert 'addAndMakeVisible(detail)' in editor

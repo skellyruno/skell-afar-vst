@@ -72,10 +72,13 @@ public:
     Rectangle reduced(T a) const { return {x + a, y + a, w - 2 * a, h - 2 * a}; }
     Rectangle reduced(T dx, T dy) const { return {x + dx, y + dy, w - 2 * dx, h - 2 * dy}; }
     Rectangle expanded(T a) const { return {x - a, y - a, w + 2 * a, h + 2 * a}; }
+    Rectangle expanded(T dx, T dy) const { return {x - dx, y - dy, w + 2 * dx, h + 2 * dy}; }
     Rectangle withTrimmedLeft(T a) const { return {x + a, y, w - a, h}; }
     Rectangle withTrimmedRight(T a) const { return {x, y, w - a, h}; }
     Rectangle withTrimmedTop(T a) const { return {x, y + a, w, h - a}; }
     Rectangle withTrimmedBottom(T a) const { return {x, y, w, h - a}; }
+    Rectangle withHeight(T nh) const { return {x, y, w, nh}; }
+    Rectangle withWidth(T nw) const { return {x, y, nw, h}; }
     Rectangle<float> toFloat() const { return {static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h)}; }
     bool contains(T px, T py) const { return px >= x && py >= y && px < x + w && py < y + h; }
     T x{}, y{}, w{}, h{};
@@ -90,6 +93,8 @@ public:
     Colour() = default;
     explicit Colour(uint32_t argb) : a(((argb >> 24) & 255) / 255.f), r(((argb >> 16) & 255) / 255.f), g(((argb >> 8) & 255) / 255.f), b((argb & 255) / 255.f) {}
     Colour withAlpha(float x) const { Colour c = *this; c.a = x; return c; }
+    float getFloatAlpha() const { return a; }
+    Colour withMultipliedAlpha(float x) const { Colour c = *this; c.a *= x; return c; }
     Colour brighter(float k = .4f) const { Colour c = *this; auto f = [&](float v) { return std::min(1.f, v + (1.f - v) * k); }; c.r = f(r); c.g = f(g); c.b = f(b); return c; }
     Colour darker(float k = .4f) const { Colour c = *this; c.r *= 1.f - k; c.g *= 1.f - k; c.b *= 1.f - k; return c; }
     Colour interpolatedWith(Colour o, float t) const { Colour c; c.r = r + (o.r - r) * t; c.g = g + (o.g - g) * t; c.b = b + (o.b - b) * t; c.a = a + (o.a - a) * t; return c; }
@@ -103,8 +108,9 @@ public:
 };
 class AffineTransform { public: static AffineTransform scale(float) { return {}; } };
 class FontOptions { public: FontOptions(float s = 14.f) : size(s) {} FontOptions withStyle(const char* st) const { FontOptions f = *this; f.bold = std::string(st) == "Bold"; return f; } float size; bool bold = false; };
-class Font { public: Font() = default; Font(FontOptions o) : opt(o) {} FontOptions opt; };
-template <class T> class BorderSize { public: BorderSize(T, T, T, T) {} };
+class Font { public: Font() = default; Font(FontOptions o) : opt(o) {} float getHeight() const { return opt.size * 1.2f; } FontOptions opt; };
+template <class T> class BorderSize { public: BorderSize(T t_, T l_, T b_, T r_) : t(t_), l(l_), b(b_), r(r_) {}
+    Rectangle<T> subtractedFrom(const Rectangle<T>& o) const { return {o.x + l, o.y + t, o.w - l - r, o.h - t - b}; } T t, l, b, r; };
 class Path {
 public:
     void startNewSubPath(float x, float y) { sub.push_back({{x, y}}); }
@@ -112,7 +118,7 @@ public:
     void quadraticTo(float cx, float cy, float x, float y) { auto p = sub.back().back(); for (int i = 1; i <= 16; ++i) { float t = i / 16.f, u = 1 - t; sub.back().push_back({u * u * p.first + 2 * u * t * cx + t * t * x, u * u * p.second + 2 * u * t * cy + t * t * y}); } }
     void cubicTo(float c1x, float c1y, float c2x, float c2y, float x, float y) { auto p = sub.back().back(); for (int i = 1; i <= 24; ++i) { float t = i / 24.f, u = 1 - t; sub.back().push_back({u*u*u*p.first + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*x, u*u*u*p.second + 3*u*u*t*c1y + 3*u*t*t*c2y + t*t*t*y}); } }
     void addTriangle(float a, float b, float c, float d, float e, float f) { sub.push_back({{a, b}, {c, d}, {e, f}, {a, b}}); }
-    void addRoundedRectangle(Rectangle<float>, float) {}
+    void addRoundedRectangle(Rectangle<float> r, float) { sub.push_back({{r.x, r.y}, {r.x + r.w, r.y}, {r.x + r.w, r.y + r.h}, {r.x, r.y + r.h}, {r.x, r.y}}); }
     void closeSubPath() { if (!sub.empty()) sub.back().push_back(sub.back().front()); }
     // angles clockwise from 12 o'clock, as in JUCE
     void addCentredArc(float cx, float cy, float rx, float ry, float /*rotation*/, float from, float to, bool startAsNew) {
@@ -151,8 +157,14 @@ public:
     void setFont(Font f) { font = f; }
     void setFont(float s) { font = Font(FontOptions(s)); }
     void fillAll() {} void fillAll(Colour) {}
-    void saveState() {} void restoreState() {}
-    void reduceClipRegion(const Path&, const AffineTransform& = {}) {}
+    void saveState() { emit("SAVE\n"); } void restoreState() { emit("RESTORE\n"); }
+    // The preview clips to the path's bounding box (rounded corners are not reproduced).
+    void reduceClipRegion(const Path& p, const AffineTransform& = {}) {
+        float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+        for (const auto& sp : p.sub) for (const auto& pt : sp) { x0 = std::min(x0, pt.first); y0 = std::min(y0, pt.second); x1 = std::max(x1, pt.first); y1 = std::max(y1, pt.second); }
+        if (x1 >= x0) emit("CLIP %.3f %.3f %.3f %.3f\n", x0, y0, x1, y1);
+    }
+    void reduceClipRegion(Rectangle<int> r) { emit("CLIP %.3f %.3f %.3f %.3f\n", (float)r.x, (float)r.y, (float)(r.x + r.w), (float)(r.y + r.h)); }
     void addTransform(const AffineTransform&) {}
     LowLevelGraphicsContext& getInternalContext() { return ctx; }
     // rectangles
@@ -196,7 +208,7 @@ private:
     }
     void image(const Image& im, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh) {
         if (!im.tag.empty()) { emit("I %s %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f\n", im.tag.c_str(), dx, dy, dw, dh, sx, sy, sw, sh); return; }
-        if (im.recs && !im.recs->empty()) { emit("PUSH %.3f %.3f\n", dx, dy); if (buf) *buf += *im.recs; else if (sink) std::fputs(im.recs->c_str(), sink); emit("POP\n"); }
+        if (im.recs && !im.recs->empty()) { emit("PUSH %.3f %.3f %.3f %.3f\n", dx, dy, dw, dh); if (buf) *buf += *im.recs; else if (sink) std::fputs(im.recs->c_str(), sink); emit("POP\n"); }
     }
     void rec(const char* k, const std::vector<float>& v) {
         emit("%s %.3f %.3f %.3f %.3f", k, col.r, col.g, col.b, col.a);
@@ -215,9 +227,10 @@ private:
 };
 
 // ---------------------------------------------------------------- components and widgets
-class MouseCursor { public: enum StandardCursorType { NormalCursor, DraggingHandCursor }; MouseCursor() = default; MouseCursor(StandardCursorType) {} };
+class MouseCursor { public: enum StandardCursorType { NormalCursor, DraggingHandCursor, PointingHandCursor }; MouseCursor() = default; MouseCursor(StandardCursorType) {} };
 template <class T> struct Point { T x{}, y{}; };
 struct MouseEvent { int x = 0, y = 0; Point<float> position; };
+struct MouseWheelDetails { float deltaX = 0.f, deltaY = 0.f; bool isReversed = false, isSmooth = false, isInertial = false; };
 class KeyPress { public: static constexpr int returnKey = 1, escapeKey = 2; KeyPress() = default; KeyPress(int) {} };
 class LookAndFeel;
 class SettableTooltipClient { public: void setTooltip(const String& t) { tip = t; } String getTooltip() const { return tip; } private: String tip; };
@@ -234,10 +247,12 @@ class Component {
 public:
     virtual ~Component() = default;
     virtual void paint(Graphics&) {}
+    virtual void paintOverChildren(Graphics&) {}
     virtual void resized() {}
     virtual void mouseDown(const MouseEvent&) {}
     virtual void mouseDrag(const MouseEvent&) {}
     virtual void mouseUp(const MouseEvent&) {}
+    virtual void mouseWheelMove(const MouseEvent&, const MouseWheelDetails&) {}
     void setBounds(int x, int y, int w, int h) { bx = x; by = y; bw = w; bh = h; resized(); }
     void setBounds(Rectangle<int> r) { setBounds(r.x, r.y, r.w, r.h); }
     void setSize(int w, int h) { setBounds(bx, by, w, h); }
@@ -278,11 +293,15 @@ class LookAndFeel { public: virtual ~LookAndFeel() = default; void setColour(int
 
 class Label : public Component {
 public:
-    enum ColourIds { textColourId = 0x1000281 };
+    enum ColourIds { backgroundColourId = 0x1000280, textColourId = 0x1000281, outlineColourId = 0x1000282 };
     void setText(const String& t, NotificationType) { text = t; }
     String getText() const { return text; }
-    void setFont(const Font& f) { font = f; } void setJustificationType(Justification j) { just = j; } void setBorderSize(BorderSize<int>) {} void setMinimumHorizontalScale(float) {}
-    void setColour(int, Colour c) { colour = c; }
+    void setFont(const Font& f) { font = f; } void setJustificationType(Justification j) { just = j; } void setBorderSize(BorderSize<int> b) { border = b; } void setMinimumHorizontalScale(float f) { minScale = f; }
+    Font getFont() const { return font; } Justification getJustificationType() const { return just; } BorderSize<int> getBorderSize() const { return border; }
+    float getMinimumHorizontalScale() const { return minScale; } bool isBeingEdited() const { return false; }
+    Colour findColour(int id) const { return id == textColourId ? colour : (id == backgroundColourId ? bg : Colour(0x00000000u)); }
+    void setColour(int id, Colour c) { if (id == textColourId) colour = c; else if (id == backgroundColourId) bg = c; }
+    BorderSize<int> border {0, 0, 0, 0}; float minScale = 1.f; Colour bg {0x00000000u};
     String text; Font font; Justification just {Justification::centredLeft}; Colour colour {0xffe8e6dau};
 };
 class Button : public Component, public SettableTooltipClient {
@@ -377,6 +396,11 @@ struct Random { static Random& getSystemRandom() { static Random r; return r; } 
 
 class LookAndFeel_V4 : public LookAndFeel {
 public:
+    virtual Font getTextButtonFont(TextButton&, int) { return Font(); }
+    virtual void drawButtonBackground(Graphics&, Button&, const Colour&, bool, bool) {}
+    virtual void drawComboBox(Graphics&, int, int, bool, int, int, int, int, ComboBox&) {}
+    virtual Font getComboBoxFont(ComboBox&) { return Font(); }
+    virtual void drawLabel(Graphics&, Label&) {}
     virtual void drawLinearSlider(Graphics&, int, int, int, int, float, float, float, Slider::SliderStyle, Slider&) {}
     virtual void drawRotarySlider(Graphics&, int, int, int, int, float, float, float, Slider&) {}
     virtual void drawToggleButton(Graphics&, ToggleButton&, bool, bool) {}
@@ -386,7 +410,7 @@ public:
 };
 
 // ---------------------------------------------------------------- files / xml / values
-class var { public: var() = default; var(const String& s_) : s(s_) {} var(const char* c) : s(c) {} var(int v) : s(v) {} var(float v) : s(v) {} var(double v) : s(v) {} String toString() const { return s; } operator double() const { return s.getDoubleValue(); } private: String s; };
+class var { public: var() = default; var(const String& s_) : s(s_) {} var(const char* c) : s(c) {} var(int v) : s(v) {} var(bool v) : s(v ? 1 : 0) {} var(float v) : s(v) {} var(double v) : s(v) {} String toString() const { return s; } operator double() const { return s.getDoubleValue(); } private: String s; };
 using Identifier = String;
 class XmlElement { public: String toString() const { return {}; } bool hasTagName(const String&) const { return true; } };
 template <class T> class Array : public std::vector<T> { public: bool isEmpty() const { return this->empty(); } };
@@ -416,12 +440,13 @@ public:
     ValueTree createCopy() const { return *this; }
     std::unique_ptr<XmlElement> createXml() const { return std::make_unique<XmlElement>(); }
     static ValueTree fromXml(const XmlElement&) { return {}; }
-    var getProperty(const Identifier&, const var& d = {}) const { return d; }
+    var getProperty(const Identifier& id, const var& d = {}) const { auto it = props.find(id.toStdString()); return it == props.end() ? d : it->second; }
     var operator[](const Identifier&) const { return {}; }
-    void setProperty(const Identifier&, const var&, void*) {}
+    void setProperty(const Identifier& id, const var& v, void*) { props[id.toStdString()] = v; }
     void addChild(const ValueTree&, int, void*) {} void removeChild(const ValueTree&, void*) {}
     ValueTree getChildWithName(const Identifier&) const { return {}; }
     bool valid = false;
+    std::map<std::string, var> props;
 };
 class MemoryBlock {};
 

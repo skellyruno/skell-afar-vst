@@ -21,14 +21,14 @@ public:
         search.setIndents(9,7);
         search.setFont(juce::Font(juce::FontOptions(13.f)));
         search.setTextToShowWhenEmpty("Search spaces...",Theme::muted);
-        search.setColour(juce::TextEditor::backgroundColourId,Theme::panelRaised);
+        search.setColour(juce::TextEditor::backgroundColourId,Theme::panelDeep);
         search.setColour(juce::TextEditor::textColourId,Theme::bone);
-        search.setColour(juce::TextEditor::outlineColourId,Theme::greenDim);
+        search.setColour(juce::TextEditor::outlineColourId,Theme::line);
         search.onTextChange=[this]{refresh();};
         addAndMakeVisible(search);
         list.setRowHeight(67);
         list.setColour(juce::ListBox::backgroundColourId,Theme::panel);
-        list.setColour(juce::ListBox::outlineColourId,Theme::greenDim);
+        list.setColour(juce::ListBox::outlineColourId,juce::Colour(0x00000000));
         addAndMakeVisible(list);
         for(int i=0;i<20;++i) {
             int sz=0;
@@ -50,6 +50,11 @@ public:
     void paint(juce::Graphics& g) override {
         panel(g,getLocalBounds().toFloat());
         sectionTitle(g,"SPACE BROWSER",14.f,9.f,static_cast<float>(getWidth())-28.f,15.f);
+    }
+    void paintOverChildren(juce::Graphics& g) override {   // scroll hint: the list fades into the panel
+        const float x=11.f,w=static_cast<float>(getWidth()-22),bottom=static_cast<float>(getHeight()-12);
+        juce::ColourGradient fade(juce::Colour(0x000f1417),x,bottom-30.f,juce::Colour(0xf00f1417),x,bottom,false);
+        g.setGradientFill(fade);g.fillRect(x,bottom-30.f,w,30.f);
     }
     void resized() override {
         const int w=getWidth()-22;
@@ -75,21 +80,23 @@ private:
             g.drawImage(img,juce::roundToInt(card.getX()),juce::roundToInt(card.getY()),juce::roundToInt(card.getWidth()),juce::roundToInt(card.getHeight()),
                         0,juce::roundToInt((srcFullH-srcH)*.5f),img.getWidth(),juce::roundToInt(srcH));
         } else { g.fillAll(Theme::panelRaised); }
-        juce::ColourGradient scrim(juce::Colours::black.withAlpha(.86f),card.getX(),0.f,juce::Colours::black.withAlpha(.30f),card.getRight(),0.f,false);
+        juce::ColourGradient scrim(juce::Colour(0xff0b0f11).withAlpha(.90f),card.getX(),0.f,juce::Colour(0xff0b0f11).withAlpha(.10f),card.getRight(),0.f,false);
         g.setGradientFill(scrim);g.fillRect(card);
-        if(selected){g.setColour(Theme::green.withAlpha(.13f));g.fillRect(card);g.setColour(Theme::green);g.fillRect(card.getX(),card.getY(),3.f,card.getHeight());}
+        if(selected){g.setColour(Theme::green.withAlpha(.10f));g.fillRect(card);}
         g.restoreState();
-        g.setColour(selected?Theme::green:Theme::greenDim.withAlpha(.55f));
-        g.drawRoundedRectangle(card.reduced(.5f),7.f,selected?1.5f:1.f);
+        g.setColour(selected?Theme::green.withAlpha(.55f):Theme::line);
+        g.drawRoundedRectangle(card.reduced(.5f),7.f,1.f);
+        if(selected){g.setColour(Theme::green);g.fillRoundedRectangle(card.getX()+1.f,card.getY()+9.f,2.6f,card.getHeight()-18.f,1.3f);}
         g.setColour(selected?Theme::greenLight:Theme::bone);g.setFont(titleFont(13.5f));
         g.drawFittedText(spec.name,14,9,w-86,22,juce::Justification::centredLeft,1);
         g.setColour(Theme::muted);g.setFont(juce::Font(juce::FontOptions(11.4f)));
         g.drawFittedText(spec.description,14,35,w-24,22,juce::Justification::centredLeft,1);
         const char* tag=spec.category==Category::Underground?"UNDER":spec.category==Category::Outdoor?"OUT":"IN";
         const juce::Rectangle<float> pill(static_cast<float>(w)-58.f,11.f,46.f,15.f);
-        g.setColour(juce::Colours::black.withAlpha(.55f));g.fillRoundedRectangle(pill,7.5f);
-        g.setColour(Theme::greenDim.brighter(.4f));g.drawRoundedRectangle(pill,7.5f,1.f);
-        g.setColour(Theme::greenLight);g.setFont(titleFont(8.5f));g.drawText(tag,pill,juce::Justification::centred);
+        const auto tint=spec.category==Category::Underground?Theme::ice:spec.category==Category::Outdoor?Theme::green:Theme::amber;
+        g.setColour(juce::Colours::black.withAlpha(.40f));g.fillRoundedRectangle(pill,7.5f);
+        g.setColour(tint.withAlpha(.45f));g.drawRoundedRectangle(pill.reduced(.5f),7.5f,1.f);
+        g.setColour(tint);g.setFont(titleFont(8.5f));g.drawText(tag,pill,juce::Justification::centred);
     }
     void selectedRowsChanged(int row) override {
         if(row>=0 && row<static_cast<int>(filtered.size()) && onSelect)

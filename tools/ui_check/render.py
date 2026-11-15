@@ -11,6 +11,8 @@ ASSETS = sys.argv[5] if len(sys.argv) > 5 else "Assets"
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans%s.ttf"
 canvas = Image.new("RGBA", (W * SS, H * SS), (6, 9, 10, 255))
 stack = [(0.0, 0.0)]
+clips = [None]
+sclips = [None]
 _fonts = {}
 WARN = []
 
@@ -50,6 +52,9 @@ def paste_layer(mask, box, fill):
 def run(bbox, draw_fn, fill):
     x0, y0, x1, y1 = [int(v) for v in bbox]
     x0 = max(0, x0 - 2); y0 = max(0, y0 - 2); x1 = min(W * SS, x1 + 3); y1 = min(H * SS, y1 + 3)
+    for c in clips + sclips:
+        if c is not None:
+            x0 = max(x0, int(c[0])); y0 = max(y0, int(c[1])); x1 = min(x1, int(c[2])); y1 = min(y1, int(c[3]))
     if x1 <= x0 or y1 <= y0:
         return
     m = Image.new("L", (x1 - x0, y1 - y0), 0)
@@ -71,9 +76,25 @@ for line in sys.stdin if len(sys.argv) < 2 or sys.argv[1] == "-" else open(sys.a
     ox, oy = off()
     S = lambda v: v * SS
     if k == "PUSH":
+        # an optional width/height clips everything drawn inside (what a cached Image does in JUCE)
+        if len(t) >= 5:
+            cx0, cy0 = (ox + float(t[1])) * SS, (oy + float(t[2])) * SS
+            clips.append((cx0, cy0, cx0 + float(t[3]) * SS, cy0 + float(t[4]) * SS))
+        else:
+            clips.append(None)
         stack.append((float(t[1]), float(t[2]))); continue
     if k == "POP":
-        stack.pop(); continue
+        stack.pop(); clips.pop(); continue
+    if k == "SAVE":
+        sclips.append(None); continue
+    if k == "RESTORE":
+        if len(sclips) > 1: sclips.pop()
+        continue
+    if k == "CLIP":
+        c = (S(float(t[1]) + ox), S(float(t[2]) + oy), S(float(t[3]) + ox), S(float(t[4]) + oy))
+        cur = sclips[-1]
+        sclips[-1] = c if cur is None else (max(cur[0], c[0]), max(cur[1], c[1]), min(cur[2], c[2]), min(cur[3], c[3]))
+        continue
     if k == "I":
         name = t[1]; dx, dy, dw, dh, sx, sy, sw, sh = map(float, t[2:10])
         try:
@@ -82,6 +103,13 @@ for line in sys.stdin if len(sys.argv) < 2 or sys.argv[1] == "-" else open(sys.a
             continue
         im = im.crop((int(sx), int(sy), int(sx + sw), int(sy + sh))).resize((max(1, int(dw * SS)), max(1, int(dh * SS))), Image.LANCZOS)
         px, py = int((dx + ox) * SS), int((dy + oy) * SS)
+        cl = [c for c in clips + sclips if c is not None]
+        if cl:   # honour the active clip rectangle
+            cx0 = max(c[0] for c in cl); cy0 = max(c[1] for c in cl); cx1 = min(c[2] for c in cl); cy1 = min(c[3] for c in cl)
+            left, top = max(0, int(cx0) - px), max(0, int(cy0) - py)
+            right, bottom = min(im.width, int(cx1) - px), min(im.height, int(cy1) - py)
+            if right <= left or bottom <= top: continue
+            im = im.crop((left, top, right, bottom)); px += left; py += top
         # clip to canvas
         canvas.alpha_composite(im, (max(px, 0), max(py, 0)), (max(-px, 0), max(-py, 0), im.width, im.height)) if px < W * SS and py < H * SS else None
         continue
