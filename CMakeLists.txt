@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(SkellAfar VERSION 0.6.0 LANGUAGES C CXX)
 
 include(FetchContent)
-set(SKELLCORE_REV "3306ad495c93e062e39b8abbf079534b0b53da4e" CACHE STRING "Immutable SkellCore template revision")
+set(SKELLCORE_REV "7694ffee5880aed050c33d713b310f853e13d096" CACHE STRING "Immutable SkellCore template revision")
 option(SKELL_AFAR_BUILD_HEADLESS_TESTS "Build physics and scene metadata tests" ON)
 set(SKELL_AFAR_REAL_SKELLCORE_DIR "" CACHE PATH "Optional: path to the SkellCore folder (containing include/SkellCore/Core.h); headless tests then run against the real FDN and limiter instead of tests/stub")
 option(SKELL_AFAR_HEADLESS_ONLY "Only run standalone C++ tests, without JUCE" OFF)
@@ -61,17 +61,13 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     FetchContent_MakeAvailable(JUCE)
   endif()
   FetchContent_Declare(SkellCore
-    GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
+    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
     GIT_TAG ${SKELLCORE_REV}
     SOURCE_SUBDIR SkellCore)
   FetchContent_MakeAvailable(SkellCore)
-  # Preserve pre-existing Skell-Afar Guided Tour while importing the v0.6.0 UI.
-  FetchContent_Declare(SkellCoreTourStyle
-    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
-    GIT_TAG eb56702153c4373799a4e8e2663e0f158c0115a6
-    GIT_SHALLOW FALSE
-    SOURCE_SUBDIR _tour_headers_only)
-  FetchContent_MakeAvailable(SkellCoreTourStyle)
+  # SkellCore v0.7.0 already provides the exact GuidedTour.h used by Afar.
+  # Do not add the old tour header directory BEFORE the pinned SDK: that would
+  # shadow Core.h and defeat the limiter/FDN dependency update.
   juce_add_plugin(SkellAfar
     COMPANY_NAME "Skell Audio"
     BUNDLE_ID "audio.skell.afar"
@@ -95,8 +91,6 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     Source/PluginEditor.cpp Source/PluginEditor.h
     Source/dsp/SceneModel.h Source/dsp/SceneDSP.h Source/dsp/RoomCharacter.h Source/dsp/BandFDN.h Source/dsp/WalkMotion.h Source/dsp/ThroatTexture.h
     Source/ui/Theme.h Source/ui/SpaceBrowser.h Source/ui/SceneView.h Source/ui/Backdrops.h Source/ui/SimpleMode.h Source/ui/DetailPanel.h Source/ui/Controls.h)
-  target_include_directories(SkellAfar BEFORE PRIVATE
-    "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")
   target_compile_features(SkellAfar PRIVATE cxx_std_17)
   target_compile_definitions(SkellAfar PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
   target_link_libraries(SkellAfar PRIVATE
@@ -108,8 +102,6 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
       message(FATAL_ERROR "Pinned SkellCore UI renderer is required")
     endif()
     add_executable(SkellAfarTourScreenshots tests/ui_tour_renderer.cpp)
-    target_include_directories(SkellAfarTourScreenshots BEFORE PRIVATE
-      "${skellcoretourstyle_SOURCE_DIR}/SkellCore/include")
     target_include_directories(SkellAfarTourScreenshots PRIVATE
       "${CMAKE_CURRENT_BINARY_DIR}/SkellAfar_artefacts/JuceLibraryCode")
     target_link_libraries(SkellAfarTourScreenshots PRIVATE
