@@ -12,7 +12,7 @@ jobs:
   headless:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Fetch pinned SkellCore
         run: |
           SHA=$(sed -n 's/.*set(SKELLCORE_REV "\([0-9a-f]\{40\}\)".*/\1/p' CMakeLists.txt | head -1)

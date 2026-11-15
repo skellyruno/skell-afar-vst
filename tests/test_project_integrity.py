@@ -56,3 +56,10 @@ fdn = (root/'Source/dsp/BandFDN.h').read_text()
 assert '#include <SkellCore/FDN.h>' in fdn and 'using skellcore::BandFDN' in fdn
 assert 'class BandFDN' not in fdn
 assert 'skellcore-vst-template.git' in cmake
+
+# Regression guard: package must be strict JSON and x64 PE before artifact upload;
+# Simple and Pro must be photographed from the actual JUCE editor.
+assert (root/'tools/verify_vst3_package.py').is_file()
+assert (root/'tools/test_verify_vst3_package.py').is_file()
+assert 'tools/verify_vst3_package.py' in (root/'.github/workflows/build-windows.yml').read_text()
+assert 'simple-mode' in (root/'tests/ui_tour_renderer.cpp').read_text()

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install headless JUCE prerequisites
         run: |
           sudo apt-get update
@@ -42,8 +42,10 @@ jobs:
           runner=$(find build-tour -type f -name SkellAfarTourScreenshots -executable | head -n 1)
           test -n "$runner"
           xvfb-run -a -s '-screen 0 1920x1200x24' "$runner" --output ui-tour-screenshots
-          test "$(find ui-tour-screenshots -name '*.png' | wc -l)" -eq 6
-      - uses: actions/upload-artifact@v4
+          test "$(find ui-tour-screenshots -name '*.png' | wc -l)" -eq 9
+          test -s ui-tour-screenshots/simple-mode/default-simple.png
+          ! cmp -s ui-tour-screenshots/default-normal.png ui-tour-screenshots/simple-mode/default-simple.png
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: SkellAfar-Real-JUCE-Guided-Tour

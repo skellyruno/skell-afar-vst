@@ -41,5 +41,27 @@ int main(int argc,char** argv) {
         std::fprintf(stderr,"Skell Afar UI: %s\\n",err.toRawUTF8());
     editor.dismissTourForScreenshot();
     processor.releaseResources();
-    return report.passed() && report.captured==6 && tourFailures==0 ? 0 : 1;
+
+    // Capture the actual SIMPLE editor too. The editor reads this persisted
+    // state on construction; no mock, frozen PNG, or UI-only fake mode.
+    SkellAfarAudioProcessor simpleProcessor;
+    simpleProcessor.editorState.setProperty("simple", true, nullptr);
+    simpleProcessor.prepareToPlay(48000.,512);
+    SkellAfarAudioProcessorEditor simpleEditor(simpleProcessor);
+    simpleEditor.dismissTourForScreenshot();
+    skellcore::ui::headless::Options simpleOptions;
+    simpleOptions.project = "Skell Afar real editor Simple mode";
+    simpleOptions.scenes = {
+        {"compact-simple",825,525,0,0,false},
+        {"default-simple",1100,700,0,0,false},
+        {"large-simple",1650,1050,0,0,false}
+    };
+    const auto simpleReport = skellcore::ui::headless::render(
+        simpleEditor,path.getChildFile("simple-mode"),simpleOptions);
+    for (const auto& err : simpleReport.errors)
+        std::fprintf(stderr,"Skell Afar Simple UI: %s\\n",err.toRawUTF8());
+    simpleEditor.dismissTourForScreenshot();
+    simpleProcessor.releaseResources();
+    return report.passed() && report.captured==6 && tourFailures==0
+        && simpleReport.passed() && simpleReport.captured==3 ? 0 : 1;
 }
