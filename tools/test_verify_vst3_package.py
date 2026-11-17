@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 from verify_vst3_package import remove_trailing_commas, verify_bundle
 
-
 CID_COMPONENT = "ABCDEF019182FAEB536B417541666172"
 CID_CONTROLLER = "ABCDEF011234ABCD536B417541666172"
 
@@ -27,11 +26,11 @@ def make_bundle(root: Path, *, machine=0x8664, optional_magic=0x20B, version="0.
         ],
     }
     raw = json.dumps(info, indent=2)
-    metadata.write_text(raw[:-2] + ",\\n}" if raw.endswith("}") else raw, encoding="utf-8")
+    metadata.write_text(raw[:-1] + "," + chr(10) + "}", encoding="utf-8")
     pe = bytearray(0x180)
     pe[:2] = b"MZ"
     struct.pack_into("<I", pe, 0x3C, 0x80)
-    pe[0x80:0x84] = b"PE\\x00\\x00"
+    pe[0x80:0x84] = bytes((0x50, 0x45, 0, 0))
     struct.pack_into("<H", pe, 0x84, machine)
     struct.pack_into("<H", pe, 0x98, optional_magic)
     module.write_bytes(pe)
@@ -48,11 +47,8 @@ class TestVST3Packaging(unittest.TestCase):
 
     def test_repairs_trailing_commas_and_verifies_pe32_plus(self):
         with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            bundle, _ = make_bundle(root)
+            bundle, _ = make_bundle(Path(temp))
             metadata = bundle / "Contents/Resources/moduleinfo.json"
-            original = metadata.read_text()
-            metadata.write_text(original[:-2] + ",\\n}")
             with self.assertRaisesRegex(ValueError, "invalid strict JSON"):
                 verify_bundle(bundle)
             result = verify_bundle(bundle, fix_json=True)
