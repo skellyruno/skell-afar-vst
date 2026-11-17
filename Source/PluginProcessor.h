@@ -23,7 +23,7 @@ public:
     int getNumPrograms() override {return 1;}
     int getCurrentProgram() override {return 0;}
     void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override {return {};}
+    // VST3 Program 000 must have a non-empty display name (pluginval Scan Programs).\n    const juce::String getProgramName(int index) override {return index==0 ? "Default" : juce::String {};}
     void changeProgramName(int,const juce::String&) override {}
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*,int) override;
