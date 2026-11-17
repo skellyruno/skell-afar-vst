@@ -91,7 +91,7 @@ function VerifiedPackage([string]$Root) {
     if ($build.product -ne 'Skell Afar' -or $build.format -ne 'VST3' -or $build.platform -ne 'Windows x86_64' -or $build.release_status -ne 'preview-only; not a commercial release') { throw 'Not a Skell Afar Windows private-preview package.' }
     $main=@(CheckManifest $r 'SHA256SUMS.txt')
     $tools=@(CheckManifest $r 'TOOLS-SHA256SUMS.txt')
-    foreach($p in @('build-info.json','vst3-verification.json','PREVIEW-ONLY.txt','Skell-Afar.vst3/Contents/Resources/moduleinfo.json','Skell-Afar.vst3/Contents/x86_64-win/Skell-Afar.vst3')) {
+    foreach($p in @('build-info.json','vst3-verification.json','PREVIEW-ONLY.txt','RELEASE-NOTES.txt','Skell-Afar.vst3/Contents/Resources/moduleinfo.json','Skell-Afar.vst3/Contents/x86_64-win/Skell-Afar.vst3')) {
         if ($main -notcontains $p) { throw "Main manifest omits $p" }
     }
     foreach($p in @('Install-Skell-Afar.ps1','INSTALL-WINDOWS.txt','THIRD-PARTY-NOTICES.txt')) {
