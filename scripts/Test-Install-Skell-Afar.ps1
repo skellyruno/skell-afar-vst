@@ -45,10 +45,12 @@ try {
     $fresh=& $installer -PackageRoot $root -Vst3Directory $target -BackupRoot $backups
     Assert ($fresh.status -eq 'installed' -and $fresh.version -eq '0.6.0') 'Fresh install failed.'
     Assert ($null -eq $fresh.backup_path) 'Fresh install unexpectedly made a backup.'
+    Assert (-not (Test-Path -LiteralPath $backups)) 'Fresh install created an unnecessary backup directory.'
     Assert (Test-Path -LiteralPath (Join-Path $target 'Skell-Afar.vst3\Contents\x86_64-win\Skell-Afar.vst3')) 'Installed VST3 module is missing.'
 
     $same=& $installer -PackageRoot $root -Vst3Directory $target -BackupRoot $backups
     Assert ($same.status -eq 'already-installed') 'Repeat install was not idempotent.'
+    Assert ($null -eq $same.backup_path) 'Idempotent install unexpectedly returned a backup.'
 
     $upgrade=Join-Path $TestRoot 'UpgradePackage'
     CopyTree $root $upgrade
@@ -70,6 +72,7 @@ try {
     Assert ($updated.status -eq 'installed' -and $updated.version -eq '0.6.1') 'Upgrade failed.'
     Assert (-not [string]::IsNullOrWhiteSpace([string]$updated.backup_path)) 'Upgrade did not preserve a backup.'
     Assert (Test-Path -LiteralPath (Join-Path $updated.backup_path 'backup-manifest.json')) 'Backup manifest missing.'
+    Assert (Test-Path -LiteralPath (Join-Path $updated.backup_path 'Skell-Afar.vst3')) 'Verified backup bundle missing.'
 
     $rollback=& $installer -RollbackFrom $updated.backup_path -Vst3Directory $target -BackupRoot $backups
     Assert ($rollback.status -eq 'rolled-back' -and $rollback.version -eq '0.6.0') 'Rollback failed to restore the original version.'
