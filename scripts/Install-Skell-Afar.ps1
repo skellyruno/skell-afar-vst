@@ -140,18 +140,28 @@ function ReplaceBundle([string]$Source,[string]$Target,[string]$TargetRoot,[stri
     $id=[Guid]::NewGuid().ToString('N')
     $stage=Join-Path $TargetRoot ('.Skell-Afar-stage-'+$id+'.vst3')
     $old=Join-Path $TargetRoot ('.Skell-Afar-previous-'+$id+'.vst3')
+    $oldMoved=$false
+    $newMoved=$false
     try {
         Copy-Item -LiteralPath $Source -Destination $stage -Recurse
         $staged=BundleEvidence $stage
         if ($staged.tree_sha256 -ne $expected.tree_sha256) { throw 'Staged bundle hash differs from source.' }
-        if (Test-Path -LiteralPath $Target) { Move-Item -LiteralPath $Target -Destination $old }
+        if (Test-Path -LiteralPath $Target) {
+            Move-Item -LiteralPath $Target -Destination $old
+            $oldMoved=$true
+        }
         Move-Item -LiteralPath $stage -Destination $Target
+        $newMoved=$true
         $installed=BundleEvidence $Target
         if ($installed.tree_sha256 -ne $expected.tree_sha256) { throw 'Installed bundle failed post-copy verification.' }
         if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
     } catch {
-        if (Test-Path -LiteralPath $Target) { Move-Item -LiteralPath $Target -Destination (Join-Path $TargetRoot ('.Skell-Afar-failed-'+$id)) -ErrorAction SilentlyContinue }
-        if ((Test-Path -LiteralPath $old) -and -not (Test-Path -LiteralPath $Target)) { Move-Item -LiteralPath $old -Destination $Target -ErrorAction SilentlyContinue }
+        if ($newMoved -and (Test-Path -LiteralPath $Target)) {
+            Move-Item -LiteralPath $Target -Destination (Join-Path $TargetRoot ('.Skell-Afar-failed-'+$id)) -ErrorAction SilentlyContinue
+        }
+        if ($oldMoved -and (Test-Path -LiteralPath $old) -and -not (Test-Path -LiteralPath $Target)) {
+            Move-Item -LiteralPath $old -Destination $Target -ErrorAction SilentlyContinue
+        }
         throw
     } finally {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
