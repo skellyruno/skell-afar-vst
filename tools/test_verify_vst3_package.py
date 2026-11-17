@@ -25,8 +25,7 @@ def make_bundle(root: Path, *, machine=0x8664, optional_magic=0x20B, version="0.
             {"CID": CID_CONTROLLER, "Name": "Skell-Afar"},
         ],
     }
-    raw = json.dumps(info, indent=2)
-    metadata.write_text(raw[:-1] + "," + chr(10) + "}", encoding="utf-8")
+    metadata.write_text(json.dumps(info, indent=2), encoding="utf-8")
     pe = bytearray(0x180)
     pe[:2] = b"MZ"
     struct.pack_into("<I", pe, 0x3C, 0x80)
@@ -49,6 +48,8 @@ class TestVST3Packaging(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             bundle, _ = make_bundle(Path(temp))
             metadata = bundle / "Contents/Resources/moduleinfo.json"
+            original = metadata.read_text()
+            metadata.write_text(original[:-1] + "," + chr(10) + "}")
             with self.assertRaisesRegex(ValueError, "invalid strict JSON"):
                 verify_bundle(bundle)
             result = verify_bundle(bundle, fix_json=True)
