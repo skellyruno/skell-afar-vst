@@ -47,16 +47,16 @@ jobs:
             workflow_run_attempt = $env:GITHUB_RUN_ATTEMPT
           }
           $buildInfo | ConvertTo-Json -Depth 4 | Set-Content -Path 'dist/build-info.json' -Encoding utf8
-          @"
-          Skell Afar Windows VST3 preview package.
-          Not a commercial release or signed installer.
-          Back up existing plugin installations before manual testing.
-          "@ | Set-Content -Path 'dist/PREVIEW-ONLY.txt' -Encoding ascii
+          @(
+            'Skell Afar Windows VST3 preview package.'
+            'Not a commercial release or signed installer.'
+            'Back up existing plugin installations before manual testing.'
+          ) | Set-Content -Path 'dist/PREVIEW-ONLY.txt' -Encoding ascii
           $distRoot = (Resolve-Path dist).Path
           $files = Get-ChildItem -Path dist -Recurse -File | Sort-Object FullName
           $checksums = foreach ($file in $files) {
             $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            $relative = $file.FullName.Substring($distRoot.Length + 1).Replace('\\','/')
+            $relative = $file.FullName.Substring($distRoot.Length + 1).Replace([string][char]92,'/')
             "$hash  $relative"
           }
           $checksums | Set-Content -Path 'dist/SHA256SUMS.txt' -Encoding ascii
