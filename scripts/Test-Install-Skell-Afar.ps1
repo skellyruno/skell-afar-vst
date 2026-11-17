@@ -42,13 +42,13 @@ try {
 
     $target=Join-Path $TestRoot 'Installed\VST3'
     $backups=Join-Path $TestRoot 'Installed\Backups'
-    $fresh=& $installer -PackageRoot $root -Vst3Directory $target -BackupRoot $backups
+    $fresh=& $installer -PackageRoot $root -Vst3Directory $target -BackupRoot $backups -Confirm:$false
     Assert ($fresh.status -eq 'installed' -and $fresh.version -eq '0.6.0') 'Fresh install failed.'
     Assert ($null -eq $fresh.backup_path) 'Fresh install unexpectedly made a backup.'
     Assert (-not (Test-Path -LiteralPath $backups)) 'Fresh install created an unnecessary backup directory.'
     Assert (Test-Path -LiteralPath (Join-Path $target 'Skell-Afar.vst3\Contents\x86_64-win\Skell-Afar.vst3')) 'Installed VST3 module is missing.'
 
-    $same=& $installer -PackageRoot $root -Vst3Directory $target -BackupRoot $backups
+    $same=& $installer -PackageRoot $root -Vst3Directory $target -BackupRoot $backups -Confirm:$false
     Assert ($same.status -eq 'already-installed') 'Repeat install was not idempotent.'
     Assert ($null -eq $same.backup_path) 'Idempotent install unexpectedly returned a backup.'
 
@@ -68,13 +68,13 @@ try {
     $v.version='0.6.1'
     $v | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $verification -Encoding UTF8
     RehashMain $upgrade
-    $updated=& (Join-Path $upgrade 'Install-Skell-Afar.ps1') -PackageRoot $upgrade -Vst3Directory $target -BackupRoot $backups
+    $updated=& (Join-Path $upgrade 'Install-Skell-Afar.ps1') -PackageRoot $upgrade -Vst3Directory $target -BackupRoot $backups -Confirm:$false
     Assert ($updated.status -eq 'installed' -and $updated.version -eq '0.6.1') 'Upgrade failed.'
     Assert (-not [string]::IsNullOrWhiteSpace([string]$updated.backup_path)) 'Upgrade did not preserve a backup.'
     Assert (Test-Path -LiteralPath (Join-Path $updated.backup_path 'backup-manifest.json')) 'Backup manifest missing.'
     Assert (Test-Path -LiteralPath (Join-Path $updated.backup_path 'Skell-Afar.vst3')) 'Verified backup bundle missing.'
 
-    $rollback=& $installer -RollbackFrom $updated.backup_path -Vst3Directory $target -BackupRoot $backups
+    $rollback=& $installer -RollbackFrom $updated.backup_path -Vst3Directory $target -BackupRoot $backups -Confirm:$false
     Assert ($rollback.status -eq 'rolled-back' -and $rollback.version -eq '0.6.0') 'Rollback failed to restore the original version.'
     Assert (-not [string]::IsNullOrWhiteSpace([string]$rollback.backup_path)) 'Rollback did not preserve the replaced version.'
 
@@ -82,7 +82,7 @@ try {
     CopyTree $root $tampered
     Add-Content -LiteralPath (Join-Path $tampered 'PREVIEW-ONLY.txt') -Value 'tampered'
     $tamperedTarget=Join-Path $TestRoot 'Tampered\VST3'
-    Throws { & (Join-Path $tampered 'Install-Skell-Afar.ps1') -PackageRoot $tampered -Vst3Directory $tamperedTarget -BackupRoot (Join-Path $TestRoot 'Tampered\Backups') } 'Tampered package was accepted.'
+    Throws { & (Join-Path $tampered 'Install-Skell-Afar.ps1') -PackageRoot $tampered -Vst3Directory $tamperedTarget -BackupRoot (Join-Path $TestRoot 'Tampered\Backups') -Confirm:$false } 'Tampered package was accepted.'
     Assert (-not (Test-Path -LiteralPath $tamperedTarget)) 'Tampered package changed the install destination.'
     Write-Host 'Skell Afar install/update/rollback tests: 17 assertions passed.'
 }

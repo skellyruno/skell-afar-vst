@@ -168,20 +168,22 @@ function ReplaceBundle([string]$Source,[string]$Target,[string]$TargetRoot,[stri
     }
     [pscustomobject]@{status='installed';version=$installed.version;target=$Target;backup_path=$backup;binary_sha256=$installed.binary_sha256}
 }
-function InvokeInstall([System.Management.Automation.PSCmdlet]$Cmdlet) {
+function InvokeInstall([bool]$ShouldProceed) {
     $p=VerifiedPackage $PackageRoot
     $root=FullPath $Vst3Directory
     $target=Join-Path $root 'Skell-Afar.vst3'
     if (Test-Path -LiteralPath $target -PathType Container) {
         $current=BundleEvidence $target
-        if ($current.tree_sha256 -eq $p.evidence.tree_sha256) { return [pscustomobject]@{status='already-installed';version=$current.version;target=$target;backup_path=$null;binary_sha256=$current.binary_sha256} }
+        if ($current.tree_sha256 -eq $p.evidence.tree_sha256) {
+            return [pscustomobject]@{status='already-installed';version=$current.version;target=$target;backup_path=$null;binary_sha256=$current.binary_sha256}
+        }
     }
-    if (-not $Cmdlet.ShouldProcess($target,"Install Skell Afar $($p.version) with verified backup")) {
+    if (-not $ShouldProceed) {
         return [pscustomobject]@{status='what-if';version=$p.version;target=$target;backup_path=$null;binary_sha256=$p.evidence.binary_sha256}
     }
     ReplaceBundle $p.bundle $target $root 'pre-install-or-update'
 }
-function InvokeRollback([System.Management.Automation.PSCmdlet]$Cmdlet) {
+function InvokeRollback([bool]$ShouldProceed) {
     $path=FullPath $RollbackFrom
     $manifest=Get-Content -LiteralPath (Join-Path $path 'backup-manifest.json') -Raw | ConvertFrom-Json -ErrorAction Stop
     if ($manifest.schema_version -ne 1 -or $manifest.product -ne 'Skell Afar') { throw 'Unsupported backup manifest.' }
@@ -192,12 +194,42 @@ function InvokeRollback([System.Management.Automation.PSCmdlet]$Cmdlet) {
     $target=Join-Path $root 'Skell-Afar.vst3'
     if (Test-Path -LiteralPath $target -PathType Container) {
         $current=BundleEvidence $target
-        if ($current.tree_sha256 -eq $e.tree_sha256) { return [pscustomobject]@{status='already-restored';version=$current.version;target=$target;backup_path=$null;binary_sha256=$current.binary_sha256} }
+        if ($current.tree_sha256 -eq $e.tree_sha256) {
+            return [pscustomobject]@{status='already-restored';version=$current.version;target=$target;backup_path=$null;binary_sha256=$current.binary_sha256}
+        }
     }
-    if (-not $Cmdlet.ShouldProcess($target,"Restore Skell Afar $($e.version) from verified backup")) {
+    if (-not $ShouldProceed) {
         return [pscustomobject]@{status='what-if';version=$e.version;target=$target;backup_path=$null;binary_sha256=$e.binary_sha256}
     }
     $result=ReplaceBundle $bundle $target $root 'pre-rollback'
     [pscustomobject]@{status='rolled-back';version=$result.version;target=$result.target;backup_path=$result.backup_path;binary_sha256=$result.binary_sha256}
 }
-if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) { InvokeInstall $PSCmdlet } else { InvokeRollback $PSCmdlet }
+if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+    $preview=VerifiedPackage $PackageRoot
+    $root=FullPath $Vst3Directory
+    $target=Join-Path $root 'Skell-Afar.vst3'
+    if (Test-Path -LiteralPath $target -PathType Container) {
+        $current=BundleEvidence $target
+        if ($current.tree_sha256 -eq $preview.evidence.tree_sha256) {
+            return [pscustomobject]@{status='already-installed';version=$current.version;target=$target;backup_path=$null;binary_sha256=$current.binary_sha256}
+        }
+    }
+    # ShouldProcess must run in the advanced script scope. Passing $PSCmdlet
+    # into a helper function leaves its command runtime detached on PowerShell 7.
+    $proceed=$PSCmdlet.ShouldProcess($target,"Install Skell Afar $($preview.version) with verified backup")
+    InvokeInstall ([bool]$proceed)
+} else {
+    $backupPath=FullPath $RollbackFrom
+    $backupManifest=Get-Content -LiteralPath (Join-Path $backupPath 'backup-manifest.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+    $target=Join-Path (FullPath $Vst3Directory) 'Skell-Afar.vst3'
+    if (Test-Path -LiteralPath $target -PathType Container) {
+        $current=BundleEvidence $target
+        $backupBundle=Join-Path $backupPath 'Skell-Afar.vst3'
+        $backupEvidence=BundleEvidence $backupBundle
+        if ($current.tree_sha256 -eq $backupEvidence.tree_sha256) {
+            return [pscustomobject]@{status='already-restored';version=$current.version;target=$target;backup_path=$null;binary_sha256=$current.binary_sha256}
+        }
+    }
+    $proceed=$PSCmdlet.ShouldProcess($target,"Restore Skell Afar $($backupManifest.version) from verified backup")
+    InvokeRollback ([bool]$proceed)
+}
