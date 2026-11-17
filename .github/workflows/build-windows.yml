@@ -49,9 +49,11 @@ jobs:
           $buildInfo | ConvertTo-Json -Depth 4 | Set-Content -Path 'dist/build-info.json' -Encoding utf8
           @(
             'Skell Afar Windows VST3 preview package.'
-            'Not a commercial release or signed installer.'
+            'release_status: preview-only; not a commercial release.'
+            'Not a signed installer.'
             'Back up existing plugin installations before manual testing.'
           ) | Set-Content -Path 'dist/PREVIEW-ONLY.txt' -Encoding ascii
+          Copy-Item -LiteralPath RELEASE-NOTES.txt -Destination dist/RELEASE-NOTES.txt
           $distRoot = (Resolve-Path dist).Path
           $files = Get-ChildItem -Path dist -Recurse -File | Sort-Object FullName
           $checksums = foreach ($file in $files) {
@@ -60,6 +62,24 @@ jobs:
             "$hash  $relative"
           }
           $checksums | Set-Content -Path 'dist/SHA256SUMS.txt' -Encoding ascii
+      - name: Add checksum-verified private-preview installer and notices
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item -LiteralPath scripts/Install-Skell-Afar.ps1 -Destination dist/Install-Skell-Afar.ps1
+          Copy-Item -LiteralPath INSTALL-WINDOWS.txt -Destination dist/INSTALL-WINDOWS.txt
+          Copy-Item -LiteralPath THIRD-PARTY-NOTICES.txt -Destination dist/THIRD-PARTY-NOTICES.txt
+          $toolFiles = @('Install-Skell-Afar.ps1','INSTALL-WINDOWS.txt','THIRD-PARTY-NOTICES.txt')
+          $toolSums = foreach ($relative in $toolFiles) {
+            $path = Join-Path dist $relative
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing preview tool: $relative" }
+            $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $relative"
+          }
+          $toolSums | Set-Content -LiteralPath dist/TOOLS-SHA256SUMS.txt -Encoding ascii
+      - name: Test private-preview install, update and rollback
+        shell: pwsh
+        run: ./scripts/Test-Install-Skell-Afar.ps1 -PackageRoot dist -TestRoot "$env:RUNNER_TEMP/Skell-Afar-Install-Test"
       - name: Validate Skell Afar VST3 with pluginval
         uses: Tracktion/pluginval/validate@v2.0.0-beta3
         with:
