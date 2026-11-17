@@ -21,7 +21,7 @@
 
 ## Not yet implemented (do not advertise as shipped)
 
-The 16-line per-band FDN, waveguide tube geometry, high-order image-source reflections, worker-thread scene solver, true calibrated SPL/air absorption ISO 9613-1, YIN/pYIN + STFT source-filter whispering and formant-aware shouting, procedural event-level mic noise/AGC/bit crushing, intelligibility-targeting dynamic EQ, user scene designer/import/export of `.skellspace`, picture drag-and-drop, gesture recording and arbitrary drawn walk paths, independent room-stereo microphone patterns, true A/B disk persistence, user-preset browser/import, automated benchmark WAV A/B fixtures and FL Studio host verification are future milestones. The `oversampling`, `quality=High`, and some environment/seed options are placeholders; select Eco/Normal prior to host reinitialization. UI's intelligibility bar is a heuristic, **not** speech-recognition accuracy.
+Further room-modeling work beyond the current optional 16-line HD FDN, waveguide tube geometry, high-order image-source reflections, worker-thread scene solver, true calibrated SPL/air absorption ISO 9613-1, YIN/pYIN + STFT source-filter whispering and formant-aware shouting, procedural event-level mic noise/AGC/bit crushing, intelligibility-targeting dynamic EQ, user scene designer/import/export of `.skellspace`, picture drag-and-drop, gesture recording and arbitrary drawn walk paths, independent room-stereo microphone patterns, true A/B disk persistence, user-preset browser/import, automated benchmark WAV A/B fixtures and FL Studio host verification are future milestones. The `oversampling`, `quality=High`, and some environment/seed options are placeholders; select Eco/Normal prior to host reinitialization. UI's intelligibility bar is a heuristic, **not** speech-recognition accuracy.
 
 ## SkellCore provenance / reproducibility
 
@@ -45,7 +45,7 @@ cmake --build build --config Release --parallel 2
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The VST3 should be in `build/SkellAfar_artefacts/Release/VST3/Skell-Afar.vst3` (generator and JUCE platform dependent). The Windows release workflow stages one VST3 bundle, validates metadata and AMD64 PE32+, runs pluginval, and uploads a private-preview artifact. The package includes `Install-Skell-Afar.ps1` for checksum-verified per-user install/update and rollback; read `INSTALL-WINDOWS.txt` and run the installer with `-WhatIf` first.
+The VST3 should be in `build/SkellAfar_artefacts/Release/VST3/Skell-Afar.vst3` (generator and JUCE platform dependent). The Windows release workflow stages one VST3 bundle, validates metadata and AMD64 PE32+, runs pluginval, and uploads a private-preview artifact. The package includes `RELEASE-NOTES.txt`, `THIRD-PARTY-NOTICES.txt` and `Install-Skell-Afar.ps1` for checksum-verified per-user install/update and rollback; read `INSTALL-WINDOWS.txt` and run the installer with `-WhatIf` first.
 
 For headless tests (no JUCE download):
 
@@ -93,7 +93,7 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 - Headless tests: exact clean identity, silence gating, morph landmarks, finite output for 8k–192k sample rates, scene smoke plus v0.3 rapid-change/multi-rate/seed-determinism stress checks with a **test-only stub** (the real SkellCore links in shipping builds).
 - Pending validation: compare with real dry vocal recordings (singers/rappers), high-drive aliasing checks, FL Studio automation/restore testing, and listening checks at various input levels.
 
-## Changes since v0.3 (pending a fresh Windows/macOS CI run)
+## Changes since v0.3 (historical development notes; see the current Windows VST3 release gate above)
 
 **DSP**
 - Throat Texture: breath noise is band-shaped (was white), masked on loud peaks, saturation is first-order ADAA anti-aliased (~7 dB less aliasing, measured), RASPY/GRITTY get a jittered ~52 Hz glottal-pulse "fry" modulation of the harmonic drive only. Clean (0%) is still bit-exact.
@@ -108,7 +108,7 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 
 **Still unverified:** JUCE compile of the new UI, FL Studio behaviour, subjective sound, CPU benchmarks.
 
-## v0.5 changes (pending a fresh Windows/macOS CI run)
+## v0.5 changes (historical development notes; current Windows VST3 release validation is tracked above)
 - **Loudness:** new LEVEL MATCH (default on, amount 85%, `levelMatch` / `levelMatchAmount`): the voice + room field is matched to the dry input loudness (measured within 0.6 dB over 100 scene/effort/distance cases; unmatched spread was 55 dB). Ambience beds recalibrated ~8 dB lower, idle ambience is below -40 dBFS in every space. Fixed the ambience bed being almost mono-left. The stereo bed now uses a short decorrelation delay.
 - **Environments:** `RoomCharacter` gives every space its own flutter / resonance / tilt / pre-delay / shimmer / slap echo; far echoes no longer gate off at normal effort. Five new spaces: Bathroom Tile, Crypt, Elevator Shaft, Snowfield, Arena (20 total, covers + `.skellspace` metadata included). A test asserts every space keeps a distinct fingerprint.
 - **Presets:** 45 factory presets that also set angle, occlusion, size, presence and (some) throat texture.
