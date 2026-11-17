@@ -4,7 +4,7 @@ project(SkellAfar VERSION 0.6.0 LANGUAGES C CXX)
 include(FetchContent)
 set(SKELLCORE_REV "7694ffee5880aed050c33d713b310f853e13d096" CACHE STRING "Immutable SkellCore template revision")
 option(SKELL_AFAR_BUILD_HEADLESS_TESTS "Build physics and scene metadata tests" ON)
-set(SKELL_AFAR_REAL_SKELLCORE_DIR "" CACHE PATH "Optional: path to the SkellCore folder (containing include/SkellCore/Core.h); headless tests then run against the real FDN and limiter instead of tests/stub")
+set(SKELL_AFAR_REAL_SKELLCORE_DIR "" CACHE PATH "Optional: local SkellCore folder for real-core headless DSP tests")
 option(SKELL_AFAR_HEADLESS_ONLY "Only run standalone C++ tests, without JUCE" OFF)
 if(SKELL_AFAR_BUILD_HEADLESS_TESTS)
   enable_testing()
@@ -43,6 +43,7 @@ if(SKELL_AFAR_BUILD_HEADLESS_TESTS)
   add_test(NAME SkellAfarStartupArrival COMMAND SkellAfarStartupArrival)
   add_executable(SkellAfarWalkMotion tests/test_walk_motion.cpp)
   target_compile_features(SkellAfarWalkMotion PRIVATE cxx_std_17)
+  target_include_directories(SkellAfarWalkMotion PRIVATE ${AFAR_CORE_INC})
   add_test(NAME SkellAfarWalkMotion COMMAND SkellAfarWalkMotion)
   foreach(extra_test Onset Fuzz Latency_ceiling Reverb_engine)
     string(TOLOWER ${extra_test} extra_lower)
@@ -73,7 +74,7 @@ if(NOT SKELL_AFAR_HEADLESS_ONLY)
     BUNDLE_ID "audio.skell.afar"
     PLUGIN_MANUFACTURER_CODE SkAu
     PLUGIN_CODE Afar
-    FORMATS VST3 Standalone
+    FORMATS VST3
     PRODUCT_NAME "Skell-Afar"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE NEEDS_MIDI_OUTPUT FALSE IS_MIDI_EFFECT FALSE
