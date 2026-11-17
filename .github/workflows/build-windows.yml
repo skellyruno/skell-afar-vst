@@ -1,4 +1,4 @@
-name: Skell-Afar Windows VST3 / Standalone
+name: Skell-Afar Windows VST3
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -11,6 +11,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
       - name: Generate byte-identical v0.6.0 scene artwork
@@ -19,29 +20,56 @@ jobs:
           python tools/generate_assets.py
       - name: Configure (JUCE 8.0.12, pinned SkellCore)
         run: cmake -S . -B build -A x64
-      - name: Compile Release
+      - name: Compile Release VST3
         run: cmake --build build --config Release --parallel 2
-      - name: Run physics tests
+      - name: Run physics and DSP regression tests
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Regression-test VST3 bundle validator
         run: python -m unittest discover -s tools -p test_verify_vst3_package.py -v
-      - name: Package VST3 and standalone
+      - name: Stage and validate Windows VST3 preview
         shell: pwsh
         run: |
-          $plugin = Get-ChildItem -Path build -Recurse -Directory -Filter 'Skell-Afar.vst3' | Select-Object -First 1
-          if (-not $plugin) { throw 'Skell-Afar.vst3 not found' }
-          $app = Get-ChildItem -Path build -Recurse -File -Filter 'Skell-Afar.exe' | Select-Object -First 1
-          if (-not $app) { throw 'Standalone Skell-Afar.exe not found' }
+          $plugins = @(Get-ChildItem -Path build -Recurse -Directory -Filter 'Skell-Afar.vst3')
+          if ($plugins.Count -ne 1) { throw "Expected exactly one Skell-Afar.vst3 bundle, found $($plugins.Count)" }
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Copy-Item $plugin.FullName -Destination 'dist/Skell-Afar.vst3' -Recurse
-          Copy-Item $app.FullName -Destination 'dist/Skell-Afar.exe'
-          # JUCE 8.0.12 may generate moduleinfo.json with trailing commas.
-          # Correct only metadata and fail on identity or x64 binary mismatch.
+          Copy-Item $plugins[0].FullName -Destination 'dist/Skell-Afar.vst3' -Recurse
           python tools/verify_vst3_package.py dist/Skell-Afar.vst3 --fix-json --manifest dist/vst3-verification.json
           if ($LASTEXITCODE -ne 0) { throw 'VST3 verification failed' }
-          Compress-Archive -Path dist/* -DestinationPath 'Skell-Afar-Windows.zip' -Force
+          $buildInfo = [ordered]@{
+            product = 'Skell Afar'
+            version = '0.6.0'
+            format = 'VST3'
+            platform = 'Windows x86_64'
+            release_status = 'preview-only; not a commercial release'
+            source_commit = $env:GITHUB_SHA
+            source_ref = $env:GITHUB_REF
+            workflow_run_id = $env:GITHUB_RUN_ID
+            workflow_run_attempt = $env:GITHUB_RUN_ATTEMPT
+          }
+          $buildInfo | ConvertTo-Json -Depth 4 | Set-Content -Path 'dist/build-info.json' -Encoding utf8
+          @"
+          Skell Afar Windows VST3 preview package.
+          Not a commercial release or signed installer.
+          Back up existing plugin installations before manual testing.
+          "@ | Set-Content -Path 'dist/PREVIEW-ONLY.txt' -Encoding ascii
+          $distRoot = (Resolve-Path dist).Path
+          $files = Get-ChildItem -Path dist -Recurse -File | Sort-Object FullName
+          $checksums = foreach ($file in $files) {
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relative = $file.FullName.Substring($distRoot.Length + 1).Replace('\\','/')
+            "$hash  $relative"
+          }
+          $checksums | Set-Content -Path 'dist/SHA256SUMS.txt' -Encoding ascii
+      - name: Validate Skell Afar VST3 with pluginval
+        uses: Tracktion/pluginval/validate@v2.0.0-beta3
+        with:
+          plugins: dist/Skell-Afar.vst3
+          strictness-level: 5
+          pluginval-version: v2.0.0-beta3
       - uses: actions/upload-artifact@v6
         with:
-          name: Skell-Afar-Windows-VST3-Standalone
-          path: Skell-Afar-Windows.zip
+          name: Skell-Afar-Windows-VST3-Preview
+          path: dist/
           if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
