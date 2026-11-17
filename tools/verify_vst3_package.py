@@ -17,28 +17,6 @@ def remove_trailing_commas(src: str) -> str:
     """Remove JSON trailing commas outside strings, preserving all quoted data."""
     result = []
     quoted = escaped = False
-    for ch in src:
-        if quoted:
-            result.append(ch)
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                quoted = False
-        elif ch == '"':
-            quoted = True
-            result.append(ch)
-        elif ch == ",":
-            j = len(result)
-            # Inspect the next non-whitespace character in the original source.
-            # This branch is handled below by the indexed implementation instead.
-            result.append(ch)
-        else:
-            result.append(ch)
-    # Re-run with indices so commas before a closing brace/bracket are removed.
-    result = []
-    quoted = escaped = False
     i = 0
     while i < len(src):
         ch = src[i]
