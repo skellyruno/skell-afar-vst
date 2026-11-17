@@ -49,7 +49,8 @@ jobs:
           $buildInfo | ConvertTo-Json -Depth 4 | Set-Content -Path 'dist/build-info.json' -Encoding utf8
           @(
             'Skell Afar Windows VST3 preview package.'
-            'Not a commercial release or signed installer.'
+            'release_status: preview-only; not a commercial release.'
+            'Not a signed installer.'
             'Back up existing plugin installations before manual testing.'
           ) | Set-Content -Path 'dist/PREVIEW-ONLY.txt' -Encoding ascii
           Copy-Item -LiteralPath RELEASE-NOTES.txt -Destination dist/RELEASE-NOTES.txt
