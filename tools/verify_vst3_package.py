@@ -17,7 +17,7 @@ def remove_trailing_commas(src: str) -> str:
     """Remove JSON trailing commas outside strings, preserving all quoted data."""
     result = []
     quoted = escaped = False
-    for i, ch in enumerate(src):
+    for ch in src:
         if quoted:
             result.append(ch)
             if escaped:
@@ -30,13 +30,42 @@ def remove_trailing_commas(src: str) -> str:
             quoted = True
             result.append(ch)
         elif ch == ",":
+            j = len(result)
+            # Inspect the next non-whitespace character in the original source.
+            # This branch is handled below by the indexed implementation instead.
+            result.append(ch)
+        else:
+            result.append(ch)
+    # Re-run with indices so commas before a closing brace/bracket are removed.
+    result = []
+    quoted = escaped = False
+    i = 0
+    while i < len(src):
+        ch = src[i]
+        if quoted:
+            result.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                quoted = False
+            i += 1
+            continue
+        if ch == '"':
+            quoted = True
+            result.append(ch)
+            i += 1
+            continue
+        if ch == ",":
             j = i + 1
             while j < len(src) and src[j].isspace():
                 j += 1
-            if j >= len(src) or src[j] not in "}]":
-                result.append(ch)
-        else:
-            result.append(ch)
+            if j < len(src) and src[j] in "}]":
+                i += 1
+                continue
+        result.append(ch)
+        i += 1
     if quoted:
         raise ValueError("Unterminated JSON string")
     return "".join(result)
@@ -49,7 +78,7 @@ def require_windows_x64_pe32_plus(binary: bytes, label: str) -> None:
     pe_off = struct.unpack_from("<I", binary, 0x3C)[0]
     if pe_off < 64 or pe_off + 26 > len(binary):
         raise ValueError(f"{label}: invalid or truncated PE header")
-    if binary[pe_off:pe_off + 4] != b"PE\\x00\\x00":
+    if binary[pe_off:pe_off + 4] != bytes((0x50, 0x45, 0, 0)):
         raise ValueError(f"{label}: invalid PE signature")
     machine = struct.unpack_from("<H", binary, pe_off + 4)[0]
     if machine != 0x8664:
@@ -84,7 +113,7 @@ def verify_bundle(bundle: Path, fix_json: bool = False) -> dict:
         if not fix_json:
             raise ValueError("moduleinfo.json is invalid strict JSON; pass --fix-json")
         repaired = remove_trailing_commas(source)
-        info = json.loads(repaired)  # Keep failing on syntax errors other than trailing commas.
+        info = json.loads(repaired)
         if repaired == source:
             raise ValueError("Unrelated JSON syntax error, not repaired")
         info_path.write_text(repaired, encoding="utf-8", newline="")
@@ -129,7 +158,7 @@ def main():
     parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
     summary = verify_bundle(args.bundle, args.fix_json)
-    output = json.dumps(summary, indent=2, sort_keys=True) + "\\n"
+    output = json.dumps(summary, indent=2, sort_keys=True) + chr(10)
     if args.manifest:
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         args.manifest.write_text(output, encoding="utf-8")
