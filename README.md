@@ -1,8 +1,8 @@
 # Skell-Afar — FEEL THE DISTANCE
 
-**Skell-Afar v0.6.0 source prototype** is an original JUCE 8 VST3/Standalone vocal perspective processor based on the SkellCore VST template. It makes a recorded voice sound closer or farther away and places it in one of 20 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
+**Skell-Afar v0.6.0** is a Windows x64 VST3 private preview of an original JUCE 8 vocal-perspective processor based on the SkellCore VST template. This release line ships VST3 only; it does not ship a standalone application. It makes a recorded voice sound closer or farther away and places it in one of 20 space scenes with approximate propagation, sparse reflections, diffuse field, generated atmosphere and microphone coloration.
 
-**Status: source prototype.** v0.3 passed Windows (MSVC) and macOS (AppleClang) CI builds with 4/4 headless tests (CI run 2026-11-07); everything since (v0.3.1 to v0.5.5: Level Match, 20 spaces, ambience beds, MORE panel, skeleton stage, 8 headless tests) is pending a fresh CI run and has only been compile-checked against a JUCE mock. The scene smoke/stress tests use a clearly labeled SkellCore stand-in. FL Studio runtime behaviour, subjective audio quality and CPU cost are **not yet verified**. Do not treat it as an industry-ready or physically validated acoustic simulator. No external recordings or impulse responses are included.
+**Release status: private preview only.** The Windows VST3 release line has a successful exact-head CI run for build, CTest, package validation and pluginval strictness 5 ([PR #9 run](https://github.com/skellyruno/skell-afar-vst/actions/runs/44008363338)). A separate follow-up adds a checksum-verified per-user installer and rollback test; that follow-up remains pending its own exact-head run. CI does not prove FL Studio compatibility, subjective audio quality, real-world CPU/latency or commercial licensing. The acoustic model is creative/approximate, not a physically validated room simulator. No external recordings or impulse responses are included.
 
 ## What works (cumulative, v0.6.0)
 
@@ -45,7 +45,7 @@ cmake --build build --config Release --parallel 2
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The VST3 should be in `build/SkellAfar_artefacts/Release/VST3/Skell-Afar.vst3` (generator and JUCE platform dependent), and the standalone is under `build/SkellAfar_artefacts/Release/Standalone/`. Run the `Build Windows VST3 / Standalone` GitHub Actions workflow to get a zipped VST3 and executable artifact once the project is pushed to a separate repo.
+The VST3 should be in `build/SkellAfar_artefacts/Release/VST3/Skell-Afar.vst3` (generator and JUCE platform dependent). The Windows release workflow stages one VST3 bundle, validates metadata and AMD64 PE32+, runs pluginval, and uploads a private-preview artifact. The package includes `Install-Skell-Afar.ps1` for checksum-verified per-user install/update and rollback; read `INSTALL-WINDOWS.txt` and run the installer with `-WhatIf` first.
 
 For headless tests (no JUCE download):
 
@@ -75,7 +75,7 @@ Assets are committed to GitHub so plugin users do **not** need Pillow. If origin
 
 ## Planned gates before release
 
-1. Compile Windows VST3 and standalone in CI; open both in FL Studio and another host. Confirm GUI scale, parameter persistence, no crashes on load/unload.
+1. Compile and validate the Windows VST3 in CI; then scan/load it in FL Studio and another host. Confirm GUI scale, parameter persistence, no crashes on load/unload, and test the package installer/rollback on a disposable user profile.
 2. Render a stepped distance vocal sweep at 44.1, 48, 96 and 192 kHz. Verify click-free arrival delay, compensation, bypass, reverb tail and long echoes.
 3. Benchmark CPU (especially Eco limiter) on low-end laptops and DAW buffer sizes 32–2048; profile pitch-change/walk moves separately.
 4. Improve source-filter effort algorithm and 16-line per-band room engine with listening tests against level-matched references; train/test no copyrighted recordings.
