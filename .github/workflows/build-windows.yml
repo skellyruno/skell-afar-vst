@@ -52,6 +52,7 @@ jobs:
             'Not a commercial release or signed installer.'
             'Back up existing plugin installations before manual testing.'
           ) | Set-Content -Path 'dist/PREVIEW-ONLY.txt' -Encoding ascii
+          Copy-Item -LiteralPath RELEASE-NOTES.txt -Destination dist/RELEASE-NOTES.txt
           $distRoot = (Resolve-Path dist).Path
           $files = Get-ChildItem -Path dist -Recurse -File | Sort-Object FullName
           $checksums = foreach ($file in $files) {
