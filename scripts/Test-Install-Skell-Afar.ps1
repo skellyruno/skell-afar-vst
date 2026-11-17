@@ -84,7 +84,7 @@ try {
     $tamperedTarget=Join-Path $TestRoot 'Tampered\VST3'
     Throws { & (Join-Path $tampered 'Install-Skell-Afar.ps1') -PackageRoot $tampered -Vst3Directory $tamperedTarget -BackupRoot (Join-Path $TestRoot 'Tampered\Backups') } 'Tampered package was accepted.'
     Assert (-not (Test-Path -LiteralPath $tamperedTarget)) 'Tampered package changed the install destination.'
-    Write-Host 'Skell Afar install/update/rollback tests: 16 assertions passed.'
+    Write-Host 'Skell Afar install/update/rollback tests: 17 assertions passed.'
 }
 finally {
     if (Test-Path -LiteralPath $TestRoot) { Remove-Item -LiteralPath $TestRoot -Recurse -Force -ErrorAction SilentlyContinue }
