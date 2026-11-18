@@ -13,6 +13,31 @@ EXPECTED_CIDS = {
 EXPECTED_VERSION = "0.6.0"
 
 
+def _reject_duplicate_json_keys(pairs):
+    """Reject duplicate object keys instead of silently keeping the last value."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_non_finite_json_number(value: str) -> None:
+    """Reject NaN and Infinity, which Python's JSON decoder accepts by default."""
+    raise ValueError(f"Non-finite JSON number is not allowed: {value}")
+
+
+def _loads_strict_json(source: str):
+    """Parse JSON without duplicate keys or non-standard numeric constants."""
+    return json.loads(
+        source,
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_non_finite_json_number,
+    )
+
+
+
 def remove_trailing_commas(src: str) -> str:
     """Remove JSON trailing commas outside strings, preserving all quoted data."""
     result = []
@@ -85,13 +110,13 @@ def verify_bundle(bundle: Path, fix_json: bool = False) -> dict:
 
     source = info_path.read_text(encoding="utf-8-sig")
     try:
-        info = json.loads(source)
+        info = _loads_strict_json(source)
         normalized = False
     except json.JSONDecodeError:
         if not fix_json:
             raise ValueError("moduleinfo.json is invalid strict JSON; pass --fix-json")
         repaired = remove_trailing_commas(source)
-        info = json.loads(repaired)
+        info = _loads_strict_json(repaired)
         if repaired == source:
             raise ValueError("Unrelated JSON syntax error, not repaired")
         info_path.write_text(repaired, encoding="utf-8", newline="")
