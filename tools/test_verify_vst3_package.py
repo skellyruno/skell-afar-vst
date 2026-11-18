@@ -79,6 +79,36 @@ class TestVST3Packaging(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly one VST3 module"):
                 verify_bundle(bundle)
 
+    def test_rejects_duplicate_json_keys_without_rewriting_even_with_fix_enabled(self):
+        with tempfile.TemporaryDirectory() as temp:
+            bundle, _ = make_bundle(Path(temp))
+            metadata = bundle / "Contents/Resources/moduleinfo.json"
+            original = metadata.read_text(encoding="utf-8")
+            duplicate = original.replace(
+                '"Name": "Skell-Afar",',
+                '"Name": "Unexpected",\n  "Name": "Skell-Afar",',
+                1,
+            )
+            metadata.write_text(duplicate, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Duplicate JSON key: Name"):
+                verify_bundle(bundle, fix_json=True)
+            self.assertEqual(metadata.read_text(encoding="utf-8"), duplicate)
+
+    def test_rejects_non_finite_json_numbers_even_with_fix_enabled(self):
+        with tempfile.TemporaryDirectory() as temp:
+            bundle, _ = make_bundle(Path(temp))
+            metadata = bundle / "Contents/Resources/moduleinfo.json"
+            original = metadata.read_text(encoding="utf-8")
+            non_finite = original.replace(
+                '"Version": "0.6.0",',
+                '"Version": "0.6.0",\n  "Unexpected": NaN,',
+                1,
+            )
+            metadata.write_text(non_finite, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Non-finite JSON number"):
+                verify_bundle(bundle, fix_json=True)
+            self.assertEqual(metadata.read_text(encoding="utf-8"), non_finite)
+
     def test_rejects_wrong_version(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle, _ = make_bundle(Path(temp), version="0.5.5")
