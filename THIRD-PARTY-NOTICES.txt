@@ -2,7 +2,7 @@ THIRD-PARTY NOTICES — SKELL AFAR 0.6.0 PRIVATE PREVIEW
 =====================================================
 Pinned dependency:
 skellyruno/skellcore-vst-template
-7694ffee5880aed050c33d713b310f853e13d096
+e972e49ef93e021a3993110a0a9603d9774e9def
 
 SkellCore/SOURCE_PROVENANCE.md identifies the following MIT-licensed SkellyTune
 Realtime source components and the corresponding notice is included in the
@@ -30,6 +30,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+SkellCore pin note: this is an experimental draft dependency revision from PR #43,
+not a certified mastering limiter. The MIT notice above applies only to the
+source components identified by SOURCE_PROVENANCE.md; it does not grant a
+blanket license to the complete SkellCore SDK or Skell Afar product.
 
 Commercial licensing review for the complete Skell Afar dependency/source set
 remains outstanding. This notice does not represent commercial clearance.
