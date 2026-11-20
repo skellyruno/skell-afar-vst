@@ -8,14 +8,21 @@
 int main() {
     // Test-only SkellCore stub: validates native scene engine's real-time
     // invariants, not the JUCE wrapper or the production true-peak limiter.
+    constexpr int sceneChangeInterval = 3900;
+    constexpr int sceneCount = static_cast<int>(afar::spaces.size());
+    constexpr int sampleCount = sceneChangeInterval * sceneCount;
+
     for(double sr : {44100.0,48000.0,96000.0}) {
         afar::SceneDSP dsp;
         dsp.prepare(sr,2,0);
         dsp.setSeed(12345);
         afar::SceneControls p;
         float maxAmplitude=0.f;
-        for(int sample=0;sample<60000;++sample) {
-            if(sample%3900==0) dsp.setScene((sample/3900)%15);
+        // Run one full interval for every factory scene. Derive the count from
+        // the catalog so future scenes cannot silently fall outside this gate.
+        for(int sample=0;sample<sampleCount;++sample) {
+            if(sample%sceneChangeInterval==0)
+                dsp.setScene((sample/sceneChangeInterval)%sceneCount);
             p.effort=(sample%4200)/4200.f;
             p.distance=afar::distanceMeters((sample%9000)/9000.f);
             p.throatTexture=(sample%5000)/5000.f;
@@ -44,5 +51,5 @@ int main() {
         const auto y=b.processFrame({0.f,0.f},p,1.f,0.f);
         assert(x.left==y.left && x.right==y.right);
     }
-    std::puts("PASS: rapid scene changes, automation sweep, multirate stability and seeded deterministic ambience");
+    std::puts("PASS: all factory scenes, automation sweep, multirate stability and seeded deterministic ambience");
 }
