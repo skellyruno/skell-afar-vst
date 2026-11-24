@@ -145,11 +145,15 @@ public:
         inset(g,track.expanded(2.f,2.5f),6.f);                                   // machined groove
         juce::ColourGradient color(c0.withAlpha(.20f),track.getX(),track.getY(),c1.withAlpha(.20f),track.getRight(),track.getY(),false);
         g.setGradientFill(color);g.fillRoundedRectangle(track,4.f);                      // full scale, dimmed
-        const auto lit=juce::Rectangle<float>(track.getX(),track.getY(),std::max(4.f,px-track.getX()),track.getHeight());
-        juce::ColourGradient active(c0,track.getX(),track.getY(),c1,track.getRight(),track.getY(),false);
-        g.setGradientFill(active);g.fillRoundedRectangle(lit,4.f);                  // active range at full intensity
-        g.setColour(juce::Colours::white.withAlpha(.30f));
-        g.drawHorizontalLine(juce::roundToInt(track.getY()+1),lit.getX()+3.f,lit.getRight()-3.f);
+        const auto lit=juce::Rectangle<float>(track.getX(),track.getY(),px-track.getX(),track.getHeight());
+        if(lit.getWidth()>0.f) {
+            juce::ColourGradient active(c0,track.getX(),track.getY(),c1,track.getRight(),track.getY(),false);
+            g.setGradientFill(active);g.fillRoundedRectangle(lit,std::min(4.f,lit.getWidth()*.5f));
+            if(lit.getWidth()>6.f) {
+                g.setColour(juce::Colours::white.withAlpha(.30f));
+                g.drawHorizontalLine(juce::roundToInt(track.getY()+1),lit.getX()+3.f,lit.getRight()-3.f);
+            }
+        }
         for(int i=1;i<5;++i){                                                       // scale divisions
             const float tick=track.getX()+i*track.getWidth()/5.f;
             g.setColour(juce::Colours::black.withAlpha(.40f));
@@ -293,11 +297,15 @@ public:
             if(active && !isHold){g.setColour(juce::Colours::white.withAlpha(.22f));g.fillRoundedRectangle(sx,15.f,segW,2.5f,1.2f);}
             else if(!active){g.setColour(Theme::lineSoft);g.drawRoundedRectangle(sx+.5f,15.5f,segW-1.f,7.f,1.5f,1.f);}
         }
-        g.setColour(Theme::muted);g.drawText("CLARITY",0.f,31.f,80.f,12.f,juce::Justification::centredLeft);
+        g.setColour(Theme::muted);g.drawText("CLARITY EST.",0.f,31.f,92.f,12.f,juce::Justification::centredLeft);
         g.setColour(Theme::bone);g.drawText(juce::String(juce::roundToInt(clarity*100.f))+"%",w-80.f,31.f,80.f,12.f,juce::Justification::centredRight);
         inset(g,juce::Rectangle<float>(0.f,46.f,w,8.f),4.f);
         juce::ColourGradient fill(Theme::ice.darker(.4f),0.f,0.f,Theme::ice,w,0.f,false);
-        g.setGradientFill(fill);g.fillRoundedRectangle(1.f,47.f,std::max(8.f,(w-2.f)*clarity),6.f,3.f);
+        const float clarityWidth=std::max(0.f,(w-2.f)*clarity);
+        if(clarityWidth>0.f) {
+            g.setGradientFill(fill);
+            g.fillRoundedRectangle(1.f,47.f,clarityWidth,6.f,std::min(3.f,clarityWidth*.5f));
+        }
     }
 private:
     void timerCallback() override {

@@ -36,13 +36,14 @@ public:
     void push(float v) noexcept { data[write] = sanitize(v); }
     float tap(float delaySamples) const noexcept {
         if (data.empty()) return 0.f;
-        const float n = static_cast<float>(data.size());
-        float p = static_cast<float>(write) - std::clamp(delaySamples, 0.f, n - 3.f);
-        if (p < 0.f) p += n;
-        if (p >= n) p -= n;   // p + n can round up to exactly n in float
-        const auto i = static_cast<std::size_t>(p) < data.size() ? static_cast<std::size_t>(p) : 0;
-        const auto j = i+1 == data.size() ? 0 : i+1;
-        const float frac = p - static_cast<float>(i);
+        // Split the delay before addressing the ring: subtracting it from a large
+        // floating-point write cursor quantizes even short fractional taps.
+        const float delay = std::clamp(std::isfinite(delaySamples) ? delaySamples : 0.f,
+                                       0.f, static_cast<float>(data.size() - 3));
+        const auto whole = static_cast<std::size_t>(delay);
+        const float frac = delay - static_cast<float>(whole);
+        const auto i = write >= whole ? write - whole : data.size() - (whole - write);
+        const auto j = i == 0 ? data.size() - 1 : i - 1;
         return data[i] * (1.f-frac) + data[j]*frac;
     }
     void advance() noexcept { if (++write == data.size()) write=0; }
@@ -96,6 +97,13 @@ public:
         presHighAlpha=static_cast<float>(1.0-std::exp(-2.0*3.141592653589793*std::min(5200.0,sr*.22)/sr));
         bedPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.08)));
         gustPole=static_cast<float>(1.0-std::exp(-1.0/(sr*.9)));
+        // Preserve the existing 48 kHz envelope response at other host rates.
+        const auto ratePole=[this](double pole48) {
+            return static_cast<float>(-std::expm1(std::log1p(-pole48)*48000.0/sr));
+        };
+        voicePole=ratePole(.003);
+        clarityPole=ratePole(.005);
+        drrPole=ratePole(.02);
         reset();
     }
     void reset() noexcept {
@@ -139,6 +147,9 @@ public:
     float peak() const noexcept { return lastPeak; }
 
     Frame processFrame(Frame input, const SceneControls& p, float wetAmount, float bypassAmount) noexcept {
+        // Invalid upstream samples must not poison the throat/envelope/loudness state.
+        input.left=sanitize(input.left);
+        input.right=sanitize(input.right);
         auto space=getSpace(currentScene);
         SpaceCharacter ch=getCharacter(currentScene);
         if(sceneMorph<1.f) {
@@ -226,8 +237,8 @@ public:
         // by up to a control block when SIZE/SPACE is automated.
         for(std::size_t k=0;k<echoTapSmoothed.size();++k)
             echoTapSmoothed[k]+=echoPole*(echoTapTargets[k]-echoTapSmoothed[k]);
-        lastDrr+=.02f*(lastDrrTarget-lastDrr);
-        voiceEnv=.997f*voiceEnv+.003f*std::abs(source);
+        lastDrr+=drrPole*(lastDrrTarget-lastDrr);
+        voiceEnv+=voicePole*(std::abs(source)-voiceEnv);
         const float tiltAlpha = std::clamp(1500.f/static_cast<float>(sr),.001f,.7f);
         sourceLow[0] += tiltAlpha*(source-sourceLow[0]);
         float shaped=source;
@@ -356,7 +367,7 @@ public:
         for(int c=0;c<channels;++c) limited[c]=std::clamp(limited[c],-kCeilingLin,kCeilingLin);
         lastPeak=std::max(lastPeak,std::max(std::abs(limited[0]),std::abs(limited[channels-1])));
         const float clear=std::clamp((lastDrr+22.f)/45.f - std::abs(ambient)*3.f, 0.f,1.f);
-        lastClarity=lastClarity*.995f+clear*.005f;
+        lastClarity+=clarityPole*(clear-lastClarity);
         ++sampleIndex;
         return {limited[0],channels==2 ? limited[1]:limited[0]};
     }
@@ -487,6 +498,7 @@ private:
     std::uint64_t sampleIndex=0;
     int previousScene=5;float sceneMorph=1.f;
     float voiceEnv=0.f, lastPeak=0.f, lastDrr=0.f, lastClarity=1.f;
+    float voicePole=.003f, clarityPole=.005f, drrPole=.02f;
     float sourceGainTarget=1.f,sourceGainSmoothed=1.f;
     float outputGainTarget=1.f,outputGainSmoothed=1.f;
     float ambientGainTarget=0.f,ambientGainSmoothed=0.f;
