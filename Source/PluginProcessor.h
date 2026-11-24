@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include "dsp/SceneDSP.h"
+#include "dsp/WalkMotion.h"
 
 class SkellAfarAudioProcessor final : public juce::AudioProcessor {
 public:
@@ -22,7 +23,8 @@ public:
     int getNumPrograms() override {return 1;}
     int getCurrentProgram() override {return 0;}
     void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override {return {};}
+    // VST3 Program 000 must have a non-empty display name (pluginval Scan Programs).
+    const juce::String getProgramName(int index) override {return index==0 ? "Default" : juce::String {};}
     void changeProgramName(int,const juce::String&) override {}
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*,int) override;
@@ -39,7 +41,9 @@ private:
     // The distance parameter is logarithmic; smoothing in metres produces a harsh
     // near-field sweep. Multiplicative smoothing tracks musical distance instead.
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> distanceSmooth;
-    double sampleRateHz=48000.,walkBeat=0.;
+    afar::WalkMotion walkMotion;
+    double sampleRateHz=48000.;
     int lastScene=-1;
+    bool wasPlaying=false;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAfarAudioProcessor)
 };

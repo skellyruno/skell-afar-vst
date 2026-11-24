@@ -1,3 +1,4 @@
+#include "force_asserts.h"
 #include <vector>
 #include "../Source/dsp/ThroatTexture.h"
 #include <cassert>

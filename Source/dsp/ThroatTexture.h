@@ -20,13 +20,14 @@ public:
             return a+std::log1p(std::exp(-2.f*a))-0.69314718f;
         }
         float process(float x) noexcept {
+            const float f=logCosh(x);
             float y;
             if(!valid) y=std::tanh(x);
             else {
-                const float dx=x-prevX,f=logCosh(x);
+                const float dx=x-prevX;
                 y=std::abs(dx)<1.0e-4f ? std::tanh(.5f*(x+prevX)) : (f-prevF)/dx;
             }
-            prevX=x;prevF=logCosh(x);valid=true;
+            prevX=x;prevF=f;valid=true;
             return y;
         }
         void invalidate() noexcept { valid=false; }

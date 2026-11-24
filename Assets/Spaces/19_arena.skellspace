@@ -1,0 +1,97 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Arena",
+  "category": "indoor",
+  "geometry": {
+    "type": "large venue",
+    "dimensionsMeters": {
+      "width": 100,
+      "length": 150,
+      "height": 40
+    },
+    "openness": false
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "concrete",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "concrete",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "concrete",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "concrete",
+      "absorptionOctaveBands125_8k": [
+        0.01,
+        0.01,
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.04
+      ]
+    }
+  ],
+  "scattering": 0.3,
+  "rt60TargetSeconds": 4.8,
+  "reflectionLevel": 0.22,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 45,
+      "gain": 0.22,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": true,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "traffic",
+      "levelDb": -26,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "huge",
+    "slap",
+    "crowd murmur"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.4: SceneModel.h spaces + characters)"
+}

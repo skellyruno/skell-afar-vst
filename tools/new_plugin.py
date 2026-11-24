@@ -25,8 +25,9 @@ def make_project(name: str, destination: Path, code: str,
     destination = destination.resolve()
     if destination.exists():
         raise FileExistsError(f"Destination already exists: {destination}")
-    if not (ROOT / "Source" / "PluginProcessor.cpp").is_file():
-        raise FileNotFoundError("Run this generator from the SkellCore template checkout")
+    template_source = ROOT / "Source" / "PluginProcessor.cpp"
+    if not template_source.is_file() or "SkellAudioProcessor" not in template_source.read_text(encoding="utf-8"):
+        raise FileNotFoundError("Run this generator from the shared SkellCore template checkout, not a product plugin repository")
     destination.mkdir(parents=True, exist_ok=False)
     try:
         src = destination / "Source"

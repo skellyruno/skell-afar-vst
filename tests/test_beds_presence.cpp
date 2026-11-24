@@ -1,4 +1,5 @@
 // Independent ambience beds + Presence Hold. Uses the test-only SkellCore stub (see tests/stub).
+#include "force_asserts.h"
 #include "../Source/dsp/SceneDSP.h"
 #include <cassert>
 #include <cmath>
@@ -12,8 +13,8 @@ static double goertzel(const std::vector<float>& v,double f,double sr){
     for(float x:v){s0=x+c*s1-s2;s2=s1;s1=s0;} return (s1*s1+s2*s2-c*s1*s2)/v.size();}
 
 // silent input, ambience only
-static std::vector<float> ambienceRender(int scene,const afar::SceneControls& p,int frames=96000){
-    afar::SceneDSP e;e.prepare(48000.,2,0);e.setSeed(777);e.setScene(scene);
+static std::vector<float> ambienceRender(int scene,const afar::SceneControls& p,int frames=96000,double rate=48000.){
+    afar::SceneDSP e;e.prepare(rate,2,0);e.setSeed(777);e.setScene(scene);
     std::vector<float> out;out.reserve(static_cast<size_t>(frames));
     for(int i=0;i<frames;++i){auto f=e.processFrame({0.f,0.f},p,1.f,0.f);out.push_back(f.left);}
     return out;
@@ -42,6 +43,14 @@ int main(){
     assert(rTrim/rNative>.15 && rTrim/rNative<.35);   // about -12 dB (0.25)
     // determinism with the same seed
     assert(ambienceRender(5,p,20000)==ambienceRender(5,p,20000));
+    {   // restartAmbience() (LOCK SEED) must reproduce the same ambience from the same state
+        afar::SceneDSP e;e.prepare(48000.,2,0);e.setSeed(777);e.setScene(5);
+        auto run=[&]{std::vector<float> o;for(int i=0;i<24000;++i)o.push_back(e.processFrame({0.f,0.f},p,1.f,0.f).left);return o;};
+        const auto first=run();run();e.restartAmbience();
+        const auto again=run();
+        // output smoothers converge within ~20 ms; after that the restarted ambience must be bit-identical
+        for(size_t i=4800;i<first.size();++i) assert(first[i]==again[i]);
+    }
     // every bed alone is finite, non-silent when raised, and bounded
     for(size_t i=0;i<8;++i){
         afar::SceneControls only=off;only.beds[i]=12.f;
@@ -49,6 +58,20 @@ int main(){
         for(float x:r)assert(std::isfinite(x)&&std::abs(x)<1.f);
         std::fprintf(stderr,"bed %zu alone rms %.2e\n",i+1,rms(r,12000));
         assert(rms(r,12000)>1.0e-7);
+    }
+    // Whisper coloration must not advance the independent environment PRNG
+    // even when whisper mode is selected while the source is silent.
+    auto whisper=windOnly;whisper.effort=0.f;
+    assert(ambienceRender(5,windOnly)==ambienceRender(5,whisper));
+    // Wind and traffic retain comparable RMS across host rates, after warmup.
+    for(int bed:{0,3}) {
+        auto only=off;only.beds[static_cast<std::size_t>(bed)]=12.f;
+        const auto base=rms(ambienceRender(5,only,192000),48000);
+        for(double rate:{44100.,96000.,192000.}) {
+            const auto value=rms(ambienceRender(5,only,static_cast<int>(rate*4),rate),static_cast<size_t>(rate));
+            std::fprintf(stderr,"bed %d rate %.0f rms ratio %.3f\n",bed,rate,value/base);
+            assert(value/base>.65 && value/base<1.55);
+        }
     }
     // Presence Hold: restores 2-5 kHz at distance, bounded overall change
     afar::SceneControls v;v.scene=8;v.distance=60.f;v.ambienceDb=-60.f;v.mix=1.f;

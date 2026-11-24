@@ -1,0 +1,97 @@
+{
+  "$schema": "skellspace/0.1-draft",
+  "name": "Snowfield",
+  "category": "outdoor",
+  "geometry": {
+    "type": "open snow",
+    "dimensionsMeters": {
+      "width": 400,
+      "length": 400,
+      "height": 100
+    },
+    "openness": true
+  },
+  "surfaces": [
+    {
+      "name": "floor",
+      "material": "snow",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.2,
+        0.4,
+        0.7,
+        0.85,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "name": "wall_north",
+      "material": "snow",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.2,
+        0.4,
+        0.7,
+        0.85,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "name": "wall_south",
+      "material": "snow",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.2,
+        0.4,
+        0.7,
+        0.85,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "name": "ceiling",
+      "material": "snow",
+      "absorptionOctaveBands125_8k": [
+        0.1,
+        0.2,
+        0.4,
+        0.7,
+        0.85,
+        0.9,
+        0.9
+      ]
+    }
+  ],
+  "scattering": 0.05,
+  "rt60TargetSeconds": 0.1,
+  "reflectionLevel": 0.02,
+  "echoObjects": [
+    {
+      "name": "primary wall / object",
+      "oneWayDistanceMeters": 180,
+      "gain": 0.02,
+      "lowpassHz": 5500,
+      "sizeMeters": 2.0
+    }
+  ],
+  "modes": {
+    "enabled": true,
+    "resonanceGain": 0.08
+  },
+  "ambience": [
+    {
+      "kind": "wind",
+      "levelDb": -28,
+      "procedural": true
+    }
+  ],
+  "traits": [
+    "dead air",
+    "muffled",
+    "distant slap"
+  ],
+  "implementation": "metadata only; engine uses compiled factory table (v0.4: SceneModel.h spaces + characters)"
+}

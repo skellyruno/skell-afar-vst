@@ -1,0 +1,40 @@
+THIRD-PARTY NOTICES — SKELL AFAR 0.6.0 PRIVATE PREVIEW
+=====================================================
+Pinned dependency:
+skellyruno/skellcore-vst-template
+e972e49ef93e021a3993110a0a9603d9774e9def
+
+SkellCore/SOURCE_PROVENANCE.md identifies the following MIT-licensed SkellyTune
+Realtime source components and the corresponding notice is included in the
+pinned SDK. This notice applies to those identified source components, not as
+a blanket license for every SkellCore component or for the Skell Afar product.
+
+MIT License
+
+Copyright (c) 2026 SkellyTune Realtime contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+SkellCore pin note: this is an experimental draft dependency revision from PR #43,
+not a certified mastering limiter. The MIT notice above applies only to the
+source components identified by SOURCE_PROVENANCE.md; it does not grant a
+blanket license to the complete SkellCore SDK or Skell Afar product.
+
+Commercial licensing review for the complete Skell Afar dependency/source set
+remains outstanding. This notice does not represent commercial clearance.

@@ -1,0 +1,32 @@
+SKELL AFAR 0.6.0 — WINDOWS VST3 PRIVATE PREVIEW
+================================================
+Private testing package only. Not a commercial release or signed installer.
+Windows x64 VST3 only. No standalone application is included.
+
+DEFAULT USER INSTALL
+%LOCALAPPDATA%\Programs\Common\VST3\Skell-Afar.vst3
+
+INSTALL / UPDATE
+1. Extract the complete preview package to a normal folder.
+2. Open PowerShell; administrator rights are not required.
+3. Preview first:
+     .\Install-Skell-Afar.ps1 -PackageRoot . -WhatIf
+4. If the preview is correct, install:
+     .\Install-Skell-Afar.ps1 -PackageRoot .
+5. Keep the backup_path printed when an existing version is replaced.
+6. Restart or rescan the DAW and test in a disposable project.
+
+ROLLBACK
+Use the exact backup_path returned by the installer:
+     .\Install-Skell-Afar.ps1 -RollbackFrom "C:\path\to\Skell-Afar-backup"
+
+The installer verifies package checksums, product identity, class IDs, module metadata,
+AMD64 PE32+ architecture, backup integrity and the staged copy before replacement.
+It does not elevate, edit the registry, restart the DAW or update in the background.
+It refuses malformed/tampered packages and refuses to replace an existing target
+that is not a valid Skell Afar bundle.
+
+RELEASE LIMITATIONS
+FL Studio scan/load, session and automation recall, real audio A/B, target-hardware
+CPU/latency and commercial licensing are not yet accepted. SkellCore's shared
+true-peak limiter is not BS.1770 certified. Do not claim mastering true-peak compliance.

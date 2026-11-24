@@ -1,0 +1,30 @@
+SKELL AFAR 0.6.0 — PRIVATE PREVIEW RELEASE NOTES
+=================================================
+
+DELIVERY
+- Windows x64 VST3 only.
+- One Skell-Afar.vst3 bundle, with build provenance and SHA-256 manifests.
+- Includes a checksum-verified per-user install/update/rollback helper.
+- Preview artifact only; not a signed installer or commercial release.
+
+CURRENT FEATURE SET
+- Stereo or mono-in/stereo-out vocal perspective processing.
+- 20 factory space scenes and 45 factory scene/effort presets.
+- SIMPLE and PRO editor modes.
+- Distance, angle, effort and tempo-following Walk controls.
+- Standard, Dense and HD reverb engine options.
+- Eight procedural ambience beds and the THROAT TEXTURE macro.
+- Named user presets and two-slot in-session A/B state swap.
+
+IMPORTANT LIMITATIONS
+- The acoustic model is a creative approximation, not a calibrated physical room simulator.
+- Some quality/oversampling and environment options remain placeholders.
+- User-defined scene file loading/export and persistent A/B disk storage are not implemented.
+- SkellCore's shared true-peak limiter is not BS.1770 certified.
+- No FL Studio host acceptance, level-matched musical A/B acceptance, or physical target-hardware CPU/latency acceptance is claimed.
+- Commercial licensing and attribution review for the complete dependency/source set remains outstanding.
+
+TESTING
+Use a disposable DAW project and a test VST3 installation. Read INSTALL-WINDOWS.txt.
+Run the installer with -WhatIf before making any change. Preserve existing sessions,
+presets and automation projects before host testing.
