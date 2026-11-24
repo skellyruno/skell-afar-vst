@@ -34,5 +34,26 @@ int main(){
         if(aligned)assert(onset>=1000+dsp.latencySamples() && onset<1000+dsp.latencySamples()+64);
         else assert(onset>1000+dsp.latencySamples()+5000); // direct TOF intentionally delayed when enabled
     }
-    std::printf("PASS: all 20 default ambient beds below -48 dBFS rms (worst %.2f dBFS), arrival delay opt-in\n",worst);
+    // Starting a mode switch during a steady signal must not jump directly
+    // between distant ring-buffer positions. Test both directions and rates.
+    for(double rate:{44100.,48000.,96000.}) for(bool aligned:{false,true}) {
+        afar::SceneDSP changed,reference;
+        changed.prepare(rate,2,0);reference.prepare(rate,2,0);
+        afar::SceneControls p;p.scene=5;p.distance=37.f;p.removeDelay=aligned;
+        p.muteAmbience=true;p.ambienceDb=-60.f;p.levelMatch=0.f;
+        const int changeAt=static_cast<int>(rate);
+        const int latency=changed.latencySamples();
+        float firstDifference=0.f;
+        for(int i=0;i<changeAt+latency+static_cast<int>(rate*.04);++i) {
+            const float x=.12f*std::sin(afar::pi*2.f*173.f*static_cast<float>(i/rate));
+            auto q=p;if(i>=changeAt) q.removeDelay=!aligned;
+            const auto x0=reference.processFrame({x,x},p,1.f,0.f);
+            const auto x1=changed.processFrame({x,x},q,1.f,0.f);
+            assert(std::isfinite(x1.left)&&std::isfinite(x1.right));
+            if(i==changeAt+latency) firstDifference=std::abs(x1.left-x0.left);
+        }
+        std::printf("Arrival switch rate %.0f aligned %d first difference %.6f\n",rate,int(aligned),firstDifference);
+        assert(firstDifference<.003f);
+    }
+    std::printf("PASS: all 20 default ambient beds below -48 dBFS rms (worst %.2f dBFS), arrival delay opt-in and crossfade\n",worst);
 }

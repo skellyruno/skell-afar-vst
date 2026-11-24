@@ -104,6 +104,14 @@ public:
         voicePole=ratePole(.003);
         clarityPole=ratePole(.005);
         drrPole=ratePole(.02);
+        windPole=ratePole(.004); waterAPole=ratePole(.10); waterBPole=ratePole(.012);
+        trafficPole=ratePole(.012); roomPole=ratePole(.015);
+        insectPole=ratePole(.3); forestPole=ratePole(.25);
+        // Broadband white noise has less energy per Hz at higher host rates.
+        // Compensate the low/band-limited beds, preserving the 48 kHz voicing.
+        noiseRateGain=static_cast<float>(std::sqrt(sr/48000.0));
+        dripThreshold=static_cast<std::uint32_t>(131072.0*48000.0/sr);
+        arrivalStep=static_cast<float>(1.0/(sr*.020));
         reset();
     }
     void reset() noexcept {
@@ -114,6 +122,9 @@ public:
         echoGateTarget=echoGateSmoothed=0.f;
         sourceLow = {}; directLow = {}; micLow = {}; micHigh = {};
         voiceEnv=0.f; sampleIndex=0;sceneMorph=1.f;
+        arrivalInitialized=false; arrivalBlend=0.f;
+        whisperState=whisperSeed(currentSeed);
+        lastPeak=0.f; lastClarity=1.f;
         sourceGainSmoothed=outputGainSmoothed=sourceGainTarget=outputGainTarget=1.f;
         ambientGainSmoothed=ambientGainTarget=0.f;
         cutoffAlphaSmoothed=cutoffAlphaTarget=.75f;
@@ -140,7 +151,7 @@ public:
     }
     void setSeed(std::uint32_t seed) noexcept {
         seed=seed==0 ? 1u : seed;
-        if(seed!=currentSeed) { currentSeed=seed;noiseState=seed; }
+        if(seed!=currentSeed) { currentSeed=seed;noiseState=seed;whisperState=whisperSeed(seed); }
     }
     float intelligibility() const noexcept { return lastClarity; }
     float directReverb() const noexcept { return lastDrr; }
@@ -245,7 +256,7 @@ public:
         if (!p.bypassEffort) {
             if (difference < -.02f) {
                 const float whisper=std::clamp(-difference*1.5f,0.f,.85f);
-                const float airyNoise=nextNoise()*voiceEnv*.27f;
+                const float airyNoise=nextNoise(whisperState)*voiceEnv*.27f;
                 shaped=(1.f-whisper*.25f)*source + whisper*(airyNoise+sourceLow[0]*.17f);
             } else if (difference > .02f) {
                 const float shout=std::clamp(difference*1.45f,0.f,1.f);
@@ -264,9 +275,15 @@ public:
         // In beat-aligned mode preserve a quiet on-time vocal anchor at extreme distances.
         // Without this floor late reflections can dominate completely, sounding like vocal latency.
         // Physical arrival-delay mode retains the unmodified 1/r direct gain.
-        const float onBeatGain=p.removeDelay ? std::max(.02f,geometricDirectGain(p.distance)) : geometricDirectGain(p.distance);
-        const float directGain=onBeatGain*directionGain*wallGain;
-        const float tof = p.removeDelay ? 0.f : p.distance * static_cast<float>(sr) / speedOfSound;
+        // Crossfade the aligned and physical paths rather than jumping the delay
+        // cursor across hundreds of milliseconds. Initialize at the saved mode.
+        const float arrivalTarget=p.removeDelay ? 0.f : 1.f;
+        if(!arrivalInitialized) { arrivalBlend=arrivalTarget; arrivalInitialized=true; }
+        else arrivalBlend+=std::clamp(arrivalTarget-arrivalBlend,-arrivalStep,arrivalStep);
+        const float physicalGain=geometricDirectGain(p.distance);
+        const float alignedGain=std::max(.02f,physicalGain);
+        const float directGain=(alignedGain+(physicalGain-alignedGain)*arrivalBlend)*directionGain*wallGain;
+        const float tof=p.distance*static_cast<float>(sr)/speedOfSound;
         // Reflections and diffuse field remain independent of the direct 1/r loss.
         float early[2] {};
         float nearSignal[2] {};
@@ -277,10 +294,13 @@ public:
             exc[c]=excitation;
             direct[c].push(excitation);
             reflections[c].push(excitation);
-            float d=direct[c].tap(tof);
-            // In physical arrival mode, every path must wait for propagation, not
-            // just the near microphone feed. Otherwise reverb precedes the voice.
-            if (!p.removeDelay) exc[c]=d;
+            float d=excitation;
+            if(arrivalBlend>0.f) {
+                const float delayed=direct[c].tap(tof);
+                d=arrivalBlend>=1.f ? delayed : excitation+(delayed-excitation)*arrivalBlend;
+            }
+            // Apply the same transition to the excitation of the room field.
+            exc[c]=d;
             presLow[c]+=presLowAlpha*(d-presLow[c]);
             presHigh[c]+=presHighAlpha*(d-presHigh[c]);
             directLow[c]+=alpha*(d-directLow[c]);
@@ -288,13 +308,18 @@ public:
             nearSignal[c]=sanitize(d);
             // 3 sparse scene taps. Distance of reflection objects, not the source distance.
             // Canyon tap is intentionally very late, box-room taps follow dimensions.
-            early[c]=(reflections[c].tap(echoTapSmoothed[0]+tof)*.55f
-                + reflections[c].tap(echoTapSmoothed[1]+tof)*.28f
-                + reflections[c].tap(echoTapSmoothed[2]+tof)*.17f)*earlyGainSmoothed;
+            const auto echoAt=[&](float offset) noexcept {
+                return reflections[c].tap(echoTapSmoothed[0]+offset)*.55f
+                     + reflections[c].tap(echoTapSmoothed[1]+offset)*.28f
+                     + reflections[c].tap(echoTapSmoothed[2]+offset)*.17f;
+            };
+            float echo=arrivalBlend>=1.f ? echoAt(tof) : echoAt(0.f);
+            if(arrivalBlend>0.f && arrivalBlend<1.f) echo+=(echoAt(tof)-echo)*arrivalBlend;
+            early[c]=echo*earlyGainSmoothed;
             direct[c].advance(); reflections[c].advance();
         }
         // Shared 4-line SkellCore FDN, used as the first live diffusion stage.
-        const auto late = lateField(p.removeDelay ? shaped : .5f*(exc[0]+exc[channels-1]),p);
+        const auto late = lateField(arrivalBlend==0.f ? shaped : .5f*(exc[0]+exc[channels-1]),p);
         const float ambient=makeAmbience(p);
         const float lateGain = space.diffuseGain * (space.isOpen ? .48f: 1.f);
         const float voiceBoost=1.f;
@@ -408,9 +433,13 @@ public:
         return out;
     }
 private:
-    float nextNoise() noexcept {
-        noiseState ^= noiseState<<13; noiseState ^= noiseState>>17; noiseState ^= noiseState<<5;
-        return static_cast<float>((noiseState>>8) * (2.0/16777216.0) - 1.0);
+    static std::uint32_t whisperSeed(std::uint32_t seed) noexcept {
+        const auto mixed=seed^0xa511e9b3u;
+        return mixed==0 ? 1u : mixed;
+    }
+    static float nextNoise(std::uint32_t& state) noexcept {
+        state ^= state<<13; state ^= state>>17; state ^= state<<5;
+        return static_cast<float>((state>>8) * (2.0/16777216.0) - 1.0);
     }
     static bool nativeBed(AmbienceKind kind,int index) noexcept {
         switch(kind) {
@@ -435,23 +464,27 @@ private:
     }
     float makeAmbience(const SceneControls& p) noexcept {
         // One noise draw per sample keeps renders repeatable even while beds are idle or muted.
-        const float n=nextNoise();
+        const float n=nextNoise(noiseState);
         for(std::size_t i=0;i<bedSmoothed.size();++i) bedSmoothed[i]+=bedPole*(bedTarget[i]-bedSmoothed[i]);
         gustLow+=gustPole*(n-gustLow);
-        const float gust=std::clamp(1.f+320.f*gustLow,.3f,1.7f);
-        windLow+=.004f*(n-windLow);
-        const float wind=windLow*8.f;
+        const float gust=std::clamp(1.f+320.f*gustLow*noiseRateGain,.3f,1.7f);
+        windLow+=windPole*(n-windLow);
+        const float wind=windLow*8.f*noiseRateGain;
         const float twoPi=2.f*pi;
         const auto active=[this](std::size_t i){return bedSmoothed[i]>1.0e-5f;};
         float sum=0.f;
         if(active(0)) sum+=bedSmoothed[0]*wind*.71f*gust;
         if(active(1)) {
-            waterA+=.10f*(n-waterA); waterB+=.012f*(n-waterB);
-            sum+=bedSmoothed[1]*(waterA-waterB)*1.56f*(.7f+.3f*gust);
+            waterA+=waterAPole*(n-waterA); waterB+=waterBPole*(n-waterB);
+            sum+=bedSmoothed[1]*(waterA-waterB)*1.56f*noiseRateGain*(.7f+.3f*gust);
         }
         if(active(2)) {
             // Procedural drips: PRNG-triggered (~1.5/s), decaying resonator, bounded tail.
-            if((noiseState & 0x7fffu)==0 && dripLevel<.004f) {
+            // Rotate the original low 15 bits into the high bits. At 48 kHz
+            // this selects exactly the old event set; at other rates it scales
+            // probability per sample to retain approximately 1.46 events/sec.
+            const auto eventBits=(noiseState<<17)|(noiseState>>15);
+            if(eventBits<dripThreshold && dripLevel<.004f) {
                 dripLevel=.22f;dripPhase=0.f;
                 dripHz=(noiseState & 0x10000u) ? 1517.f:1129.f;
             }
@@ -464,18 +497,18 @@ private:
             }
             sum+=bedSmoothed[2]*drip*.55f;
         }
-        if(active(3)) { trafficLow+=.012f*(n-trafficLow); sum+=bedSmoothed[3]*trafficLow*3.6f*(.5f+.5f*gust); }
+        if(active(3)) { trafficLow+=trafficPole*(n-trafficLow); sum+=bedSmoothed[3]*trafficLow*3.6f*noiseRateGain*(.5f+.5f*gust); }
         if(active(4)) {
-            roomLow+=.015f*(n-roomLow);
-            sum+=2.5f*bedSmoothed[4]*(n*.08f+roomLow*8.f*.13f+hum.next()*.012f);
+            roomLow+=roomPole*(n-roomLow);
+            sum+=2.5f*bedSmoothed[4]*(n*.08f+roomLow*8.f*.13f*noiseRateGain+hum.next()*.012f);
         }
         if(active(5)) {
-            insLow+=.3f*(n-insLow);
+            insLow+=insectPole*(n-insLow);
             const float chirp=std::max(0.f,chirpLfo.next());
             sum+=1.9f*bedSmoothed[5]*((n-insLow)*.10f*(.3f+.7f*chirp)+insectTone.next()*.02f*chirp);
         }
         if(active(6)) {
-            forestLow+=.25f*(n-forestLow);
+            forestLow+=forestPole*(n-forestLow);
             sum+=1.57f*bedSmoothed[6]*(wind*.45f*gust+(n-forestLow)*.07f*std::clamp(gust-.6f,0.f,1.2f));
         }
         if(active(7)) sum+=2.76f*bedSmoothed[7]*(drone55.next()*.05f+drone83.next()*.03f+wind*.25f);
@@ -494,7 +527,10 @@ private:
     skellcore::TruePeakLimiter limiter;
     static constexpr float kCeilingLin=.8912509f; // -1 dBFS, matches limiter.setCeilingDb(-1.f)
     std::array<float,2> sourceLow {}, directLow {}, micLow {}, micHigh {};
-    std::uint32_t noiseState=0x98712341u,currentSeed=0x98712341u;
+    std::uint32_t noiseState=0x98712341u,currentSeed=0x98712341u,whisperState=0x98712341u;
+    std::uint32_t dripThreshold=131072u;
+    float arrivalBlend=0.f,arrivalStep=1.f/960.f;
+    bool arrivalInitialized=false;
     std::uint64_t sampleIndex=0;
     int previousScene=5;float sceneMorph=1.f;
     float voiceEnv=0.f, lastPeak=0.f, lastDrr=0.f, lastClarity=1.f;
@@ -517,6 +553,8 @@ private:
     float presLowAlpha=.2f,presHighAlpha=.5f,presenceTarget=0.f,presenceSmoothed=0.f;
     std::array<float,8> bedTarget {}, bedSmoothed {};
     float bedPole=.0004f,gustPole=.0001f,gustLow=0.f,windLow=0.f,waterA=0.f,waterB=0.f,trafficLow=0.f,roomLow=0.f,insLow=0.f,forestLow=0.f;
+    float windPole=.004f,waterAPole=.10f,waterBPole=.012f,trafficPole=.012f,roomPole=.015f;
+    float insectPole=.3f,forestPole=.25f,noiseRateGain=1.f;
     SineOsc hum,chirpLfo,insectTone,drone55,drone83;
 };
 } // namespace afar

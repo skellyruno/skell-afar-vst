@@ -133,14 +133,13 @@ private:
         void reset() noexcept { std::fill(data.begin(), data.end(), 0.f); w = 0; }
         void push(float v) noexcept { data[w] = std::isfinite(v) ? v : 0.f; }
         float tap(float delay) const noexcept {
-            const float n = static_cast<float>(data.size());
-            float p = static_cast<float>(w) - std::clamp(delay, 0.f, n - 3.f);
-            if (p < 0.f) p += n;
-            if (p >= n) p -= n;   // p + n can round up to exactly n in float
-            const auto i = static_cast<std::size_t>(p) < data.size() ? static_cast<std::size_t>(p) : 0;
-            const auto j = i + 1 == data.size() ? 0 : i + 1;
-            const float f = p - static_cast<float>(i);
-            return data[i] * (1.f - f) + data[j] * f;
+            // Match SceneDSP's integer cursor / fractional offset addressing.
+            const float tapDelay=std::clamp(std::isfinite(delay)?delay:0.f,0.f,static_cast<float>(data.size()-3));
+            const auto whole=static_cast<std::size_t>(tapDelay);
+            const float f=tapDelay-static_cast<float>(whole);
+            const auto i=w>=whole?w-whole:data.size()-(whole-w);
+            const auto j=i==0?data.size()-1:i-1;
+            return data[i]*(1.f-f)+data[j]*f;
         }
         void advance() noexcept { if (++w == data.size()) w = 0; }
         std::vector<float> data; std::size_t w = 0;
