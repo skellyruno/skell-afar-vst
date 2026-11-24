@@ -101,6 +101,9 @@ public:
         const auto ratePole=[this](double pole48) {
             return static_cast<float>(-std::expm1(std::log1p(-pole48)*48000.0/sr));
         };
+        airShelfPole=static_cast<float>(1.0-std::exp(-2.0*pi*std::min(3200.0,sr*.22)/sr));
+        breathHpPole=static_cast<float>(1.0-std::exp(-2.0*pi*650.0/sr));
+        breathLpPole=static_cast<float>(1.0-std::exp(-2.0*pi*std::min(4800.0,sr*.22)/sr));
         voicePole=ratePole(.003);
         clarityPole=ratePole(.005);
         drrPole=ratePole(.02);
@@ -120,7 +123,12 @@ public:
         diffuse.reset(); dense.reset(); hd.reset(); fadeLeft=0; limiter.reset(); throat.reset(); character.reset(); ambDelay.reset();
         lmIn=lmOut=lmInFast=lmInHold=lmOutPre=0.f; lmGain=lmTarget=1.f;
         echoGateTarget=echoGateSmoothed=0.f;
-        sourceLow = {}; directLow = {}; micLow = {}; micHigh = {};
+        sourceLow = {}; directLow = {}; micLow = {}; micHigh = {}; airLow={};
+        airGainTarget=airGainSmoothed=1.f;
+        diffuseTarget=diffuseSmoothed=getSpace(currentScene).diffuseGain*(getSpace(currentScene).isOpen?.48f:1.f);
+        echoWeights=echoWeightTargets=reflectionWeights(getSpace(currentScene).scatter);
+        breathLow=breathBand=0.f; effortColor=0.f;
+        lastCharacterScene=-1; lateRollOff=-1.f;
         voiceEnv=0.f; sampleIndex=0;sceneMorph=1.f;
         arrivalInitialized=false; arrivalBlend=0.f;
         whisperState=whisperSeed(currentSeed);
@@ -161,6 +169,10 @@ public:
         // Invalid upstream samples must not poison the throat/envelope/loudness state.
         input.left=sanitize(input.left);
         input.right=sanitize(input.right);
+        const bool update=(sampleIndex % 32U)==0U;
+        // The interpolated geometry is consumed only at control rate. Avoid
+        // copying/morphing both scene structs for each individual audio sample.
+        if(update) {
         auto space=getSpace(currentScene);
         SpaceCharacter ch=getCharacter(currentScene);
         if(sceneMorph<1.f) {
@@ -176,6 +188,7 @@ public:
             space.diffuseGain=morph(old.diffuseGain,space.diffuseGain);
             space.upperRollOffHz=morph(old.upperRollOffHz,space.upperRollOffHz);
             space.firstEchoMeters=morph(old.firstEchoMeters,space.firstEchoMeters);
+            space.scatter=morph(old.scatter,space.scatter);
             // Character: continuous fields blend; timings/centres of an absent feature are held from the
             // previous space while its gain fades, so nothing jumps.
             ch.flutterFb=morph(oc.flutterFb,ch.flutterFb); if(ch.flutterMs<=0.f) ch.flutterMs=oc.flutterMs;
@@ -183,19 +196,9 @@ public:
             ch.lowDb=morph(oc.lowDb,ch.lowDb); ch.highDb=morph(oc.highDb,ch.highDb);
             ch.preMs=morph(oc.preMs,ch.preMs); ch.mod=morph(oc.mod,ch.mod);
             ch.slapGain=morph(oc.slapGain,ch.slapGain); if(ch.slapMs<=0.f) ch.slapMs=oc.slapMs;
-            sceneMorph=std::min(1.f,sceneMorph+1.f/static_cast<float>(sr*.3));
         }
-        throat.setAmount(p.throatTexture);
-        const auto textured = throat.process(input.left,input.right);
-        const float source = .5f*(sanitize(textured.left)+sanitize(textured.right));
-        const float recorded = recordedEffort(p.recordedAs);
-        const float difference = std::clamp(p.effort - recorded, -1.f, 1.f);
-        const float gainDb = std::clamp((effortSpl(p.effort) - effortSpl(recorded)) * .42f, -16.f, 16.f);
-        // Update expensive scene/acoustic coefficients at control rate. A small
-        // one-pole smoothing stage below prevents zipper noise at the 32-sample
-        // boundaries, even during continuous walk automation.
-        const bool update=(sampleIndex % 32U)==0U;
-        if(update) {
+            const float recorded=recordedEffort(p.recordedAs);
+            const float gainDb=std::clamp((effortSpl(p.effort)-effortSpl(recorded))*.42f,-16.f,16.f);
             sourceGainTarget=dbGain(gainDb);
             outputGainTarget=dbGain(p.outputDb);
             ambientGainTarget=p.muteAmbience || p.ambienceDb<=-59.9f ? 0.f
@@ -208,6 +211,10 @@ public:
             const float face=std::clamp(p.angle/180.f,0.f,1.f);
             const float weather=1.f + std::clamp((20.f-p.temperature)*.006f,-.15f,.15f)
                                       + std::clamp((50.f-p.humidity)*.003f,-.15f,.15f);
+            airGainTarget=airTrebleGain(p.distance,p.absorption,weather);
+            echoWeightTargets=reflectionWeights(space.scatter);
+            const float openGain=space.isOpen?.48f:1.f;
+            diffuseTarget=space.diffuseGain*openGain*roomDistanceGain(p.distance,space.isOpen);
             const float typeCut[] {19000.f,10500.f,3500.f,1600.f,4900.f,1100.f};
             const int occlusionType=std::clamp(p.occlusionType,0,5);
             const float obstruction=std::clamp(p.occlusion,0.f,1.f);
@@ -226,15 +233,30 @@ public:
             const float gate=std::clamp((echoSpl-4.f)/26.f,0.f,1.f);   // far echoes stay audible at normal effort
             earlyGainTarget=space.reflectionGain*gate*std::sqrt(std::clamp(p.size,.5f,2.f));
             echoGateTarget=gate*std::sqrt(std::clamp(p.size,.5f,2.f));
-            character.setTarget(ch);
+            if(sceneMorph<1.f || lastCharacterScene!=currentScene) {
+                character.setTarget(ch);
+                lastCharacterScene=sceneMorph<1.f?-1:currentScene;
+            }
             lastDrrTarget=directReverbDb(space,p.distance);
-            // Most expensive SkellCore coefficient update: only once per 32 frames.
-            lateOpen=space.isOpen;
-            lateLowRt=space.rt60Seconds*p.size;
-            lateHighRt=highBandDecay(lateLowRt,space.isOpen,space.upperRollOffHz);
+            // SkellCore already caches its feedback math. Cache our own
+            // high-band mapping as well when the acoustic targets are static.
+            const float nextRt=space.rt60Seconds*p.size;
+            if(nextRt!=lateLowRt || space.isOpen!=lateOpen || space.upperRollOffHz!=lateRollOff) {
+                lateOpen=space.isOpen;lateLowRt=nextRt;lateRollOff=space.upperRollOffHz;
+                lateHighRt=highBandDecay(lateLowRt,lateOpen,lateRollOff);
+            }
             applyLateParams(activeEngine);
             if(fadeLeft>0) applyLateParams(prevEngine);
         }
+        if(sceneMorph<1.f) sceneMorph=std::min(1.f,sceneMorph+1.f/static_cast<float>(sr*.3));
+        throat.setAmount(p.throatTexture);
+        const auto textured=throat.process(input.left,input.right);
+        const float source=.5f*(sanitize(textured.left)+sanitize(textured.right));
+        const float difference=std::clamp(p.effort-recordedEffort(p.recordedAs),-1.f,1.f);
+        airGainSmoothed+=controlPole*(airGainTarget-airGainSmoothed);
+        diffuseSmoothed+=echoPole*(diffuseTarget-diffuseSmoothed);
+        for(std::size_t k=0;k<echoWeights.size();++k)
+            echoWeights[k]+=echoPole*(echoWeightTargets[k]-echoWeights[k]);
         sourceGainSmoothed+=controlPole*(sourceGainTarget-sourceGainSmoothed);
         outputGainSmoothed+=controlPole*(outputGainTarget-outputGainSmoothed);
         ambientGainSmoothed+=controlPole*(ambientGainTarget-ambientGainSmoothed);
@@ -253,16 +275,22 @@ public:
         const float tiltAlpha = std::clamp(1500.f/static_cast<float>(sr),.001f,.7f);
         sourceLow[0] += tiltAlpha*(source-sourceLow[0]);
         float shaped=source;
-        if (!p.bypassEffort) {
-            if (difference < -.02f) {
-                const float whisper=std::clamp(-difference*1.5f,0.f,.85f);
-                const float airyNoise=nextNoise(whisperState)*voiceEnv*.27f;
-                shaped=(1.f-whisper*.25f)*source + whisper*(airyNoise+sourceLow[0]*.17f);
-            } else if (difference > .02f) {
-                const float shout=std::clamp(difference*1.45f,0.f,1.f);
-                const float hp=source-sourceLow[0];
-                shaped=std::tanh((source + hp*.24f*shout)*(1.f + shout*1.5f)) / (1.f+.4f*shout);
-            }
+        // Ramp through neutral and the timbre bypass rather than switching
+        // nonlinear processing at a fixed threshold. Preserve the dry body.
+        const float targetColor=p.bypassEffort?0.f:difference;
+        effortColor+=controlPole*(targetColor-effortColor);
+        if(effortColor<-.0001f) {
+            const float whisper=std::clamp(-effortColor*1.5f,0.f,.85f);
+            const float white=nextNoise(whisperState);
+            breathLow+=breathHpPole*(white-breathLow);
+            breathBand+=breathLpPole*((white-breathLow)-breathBand);
+            const float airyNoise=breathBand*noiseRateGain*voiceEnv*.36f/(1.f+3.f*std::abs(source));
+            shaped=(1.f-whisper*.25f)*source+whisper*(airyNoise+sourceLow[0]*.17f);
+        } else if(effortColor>.0001f) {
+            const float shout=std::clamp(effortColor*1.45f,0.f,1.f);
+            const float hp=source-sourceLow[0];
+            const float driven=std::tanh((source+hp*.24f*shout)*(1.f+shout*1.5f))/(1.f+.4f*shout);
+            shaped=source+(driven-source)*std::min(1.f,shout*4.f);
         }
         shaped=sanitize(shaped*sourceGainSmoothed);
         // Directivity and occlusion: level loss + gentle low-pass. No phase-reset jumps.
@@ -304,14 +332,16 @@ public:
             presLow[c]+=presLowAlpha*(d-presLow[c]);
             presHigh[c]+=presHighAlpha*(d-presHigh[c]);
             directLow[c]+=alpha*(d-directLow[c]);
-            d=(directLow[c]+(presHigh[c]-presLow[c])*presenceNow)*directGain;
+            airLow[c]+=airShelfPole*(directLow[c]-airLow[c]);
+            const float airFiltered=airLow[c]+(directLow[c]-airLow[c])*airGainSmoothed;
+            d=(airFiltered+(presHigh[c]-presLow[c])*presenceNow)*directGain;
             nearSignal[c]=sanitize(d);
             // 3 sparse scene taps. Distance of reflection objects, not the source distance.
             // Canyon tap is intentionally very late, box-room taps follow dimensions.
             const auto echoAt=[&](float offset) noexcept {
-                return reflections[c].tap(echoTapSmoothed[0]+offset)*.55f
-                     + reflections[c].tap(echoTapSmoothed[1]+offset)*.28f
-                     + reflections[c].tap(echoTapSmoothed[2]+offset)*.17f;
+                return reflections[c].tap(echoTapSmoothed[0]+offset)*echoWeights[0]
+                     + reflections[c].tap(echoTapSmoothed[1]+offset)*echoWeights[1]
+                     + reflections[c].tap(echoTapSmoothed[2]+offset)*echoWeights[2];
             };
             float echo=arrivalBlend>=1.f ? echoAt(tof) : echoAt(0.f);
             if(arrivalBlend>0.f && arrivalBlend<1.f) echo+=(echoAt(tof)-echo)*arrivalBlend;
@@ -321,7 +351,7 @@ public:
         // Shared 4-line SkellCore FDN, used as the first live diffusion stage.
         const auto late = lateField(arrivalBlend==0.f ? shaped : .5f*(exc[0]+exc[channels-1]),p);
         const float ambient=makeAmbience(p);
-        const float lateGain = space.diffuseGain * (space.isOpen ? .48f: 1.f);
+        const float lateGain=diffuseSmoothed;
         const float voiceBoost=1.f;
         const float diffuseL=late[0]*lateGain;
         const float diffuseR=late[1]*lateGain;
@@ -522,7 +552,13 @@ private:
     afar::BandFDN<8> dense;
     afar::BandFDN<16> hd;
     int activeEngine=0, prevEngine=0, fadeLen=3840, fadeLeft=0;
-    float lateLowRt=2.5f, lateHighRt=1.2f;
+    float lateLowRt=2.5f,lateHighRt=1.2f,lateRollOff=-1.f;
+    int lastCharacterScene=-1;
+    float airShelfPole=.3f,airGainTarget=1.f,airGainSmoothed=1.f;
+    float diffuseTarget=0.f,diffuseSmoothed=0.f;
+    float breathHpPole=.08f,breathLpPole=.45f,breathLow=0.f,breathBand=0.f,effortColor=0.f;
+    std::array<float,2> airLow{};
+    std::array<float,3> echoWeights{},echoWeightTargets{};
     bool lateOpen=false;
     skellcore::TruePeakLimiter limiter;
     static constexpr float kCeilingLin=.8912509f; // -1 dBFS, matches limiter.setCeilingDb(-1.f)

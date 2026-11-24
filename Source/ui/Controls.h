@@ -177,7 +177,7 @@ public:
             static_cast<float>(w),static_cast<float>(h)).reduced(3.f);
         const float outerR=std::min(b.getWidth(),b.getHeight())*.5f;
         const float cx=b.getCentreX(),cy=b.getCentreY();
-        const float radius=outerR*.70f,arcR=outerR*.84f;
+        const float radius=outerR*.72f,arcR=outerR*.86f;
         const float v=juce::jlimit(0.f,1.f,std::isfinite(value)?value:0.f);
         const float angle=start+v*(end-start);
         const bool texture=slider.getComponentID()=="throatTexture";
@@ -197,18 +197,19 @@ public:
         g.setColour(juce::Colours::black.withAlpha(.55f));g.strokePath(track,juce::PathStrokeType(3.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         g.setColour(juce::Colours::white.withAlpha(.07f));g.strokePath(track,juce::PathStrokeType(2.2f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         if(v>.004f){
-            g.setColour(accent.withAlpha(.07f));g.strokePath(progress,juce::PathStrokeType(8.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            g.setColour(accent.withAlpha(.15f));g.strokePath(progress,juce::PathStrokeType(5.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            g.setColour(accent.withAlpha(.055f));g.strokePath(progress,juce::PathStrokeType(6.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            g.setColour(accent.withAlpha(.12f));g.strokePath(progress,juce::PathStrokeType(4.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             g.setColour(accent);g.strokePath(progress,juce::PathStrokeType(2.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         }
         // body: contact shadow, bevelled rim, brushed cap with a lit upper edge
         g.setColour(juce::Colours::black.withAlpha(.16f));g.fillEllipse(cx-radius-3.f,cy-radius+.5f,2.f*radius+6.f,2.f*radius+6.f);
         g.setColour(juce::Colours::black.withAlpha(.26f));g.fillEllipse(cx-radius-1.5f,cy-radius+1.f,2.f*radius+3.f,2.f*radius+3.f);
-        juce::ColourGradient rim(juce::Colour(0xff55625b),cx-radius,cy-radius,juce::Colour(0xff0a0f0d),cx+radius,cy+radius,false);
+        juce::ColourGradient rim(juce::Colour(0xff65706a),cx-radius,cy-radius,juce::Colour(0xff080b0a),cx+radius,cy+radius,false);
         g.setGradientFill(rim);g.fillEllipse(cx-radius,cy-radius,2*radius,2*radius);
-        const float capR=radius*.84f;
+        const float capR=radius*.85f;
         juce::ColourGradient cap(juce::Colour(0xff323c37),cx-capR*.7f,cy-capR*.9f,juce::Colour(0xff121816),cx+capR*.7f,cy+capR*.9f,false);
         g.setGradientFill(cap);g.fillEllipse(cx-capR,cy-capR,capR*2,capR*2);
+        g.setColour(juce::Colours::black.withAlpha(.45f));g.drawEllipse(cx-capR,cy-capR,capR*2,capR*2,.8f);
         juce::Path sheen;sheen.addCentredArc(cx,cy,capR*.93f,capR*.93f,0.f,-2.55f,-.55f,true);
         g.setColour(juce::Colours::white.withAlpha(.20f));g.strokePath(sheen,juce::PathStrokeType(1.2f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         // pointer: shadowed ivory blade with an accent dot at the tip

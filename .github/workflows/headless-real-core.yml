@@ -27,3 +27,31 @@ jobs:
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
       - run: cmake --build build --parallel 2
       - run: ctest --test-dir build --output-on-failure
+      - name: Compare baseline and current SceneDSP CPU (release, same runner)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=29d0e1c0407f153543e9250a446b71edcf0272d7
+          git fetch --no-tags --depth=1 origin "$baseline"
+          mkdir -p /tmp/afar-baseline/tests
+          git archive "$baseline" Source/dsp | tar -x -C /tmp/afar-baseline
+          cp tests/benchmark_scene.cpp /tmp/afar-baseline/tests/
+          core="$GITHUB_WORKSPACE/../skellcore/SkellCore/include"
+          g++ -std=c++17 -O3 -DNDEBUG -I"$core" /tmp/afar-baseline/tests/benchmark_scene.cpp -o /tmp/afar-bench-before
+          g++ -std=c++17 -O3 -DNDEBUG -I"$core" tests/benchmark_scene.cpp -o /tmp/afar-bench-after
+          lscpu | head -25
+          echo "BASELINE $baseline"
+          /tmp/afar-bench-before | tee /tmp/afar-before.csv
+          echo "CURRENT $GITHUB_SHA"
+          /tmp/afar-bench-after | tee /tmp/afar-after.csv
+          python - <<'PY'
+          import csv
+          a=list(csv.DictReader(open('/tmp/afar-before.csv')))
+          b=list(csv.DictReader(open('/tmp/afar-after.csv')))
+          assert len(a)==len(b)==12
+          for x,y in zip(a,b):
+              assert (x['rate'],x['engine'],x['motion'])==(y['rate'],y['engine'],y['motion'])
+              old=float(x['median_ns_per_frame']);new=float(y['median_ns_per_frame'])
+              print(f"rate={x['rate']} engine={x['engine']} motion={x['motion']}: {old:.1f} -> {new:.1f} ns/frame, change {(new/old-1)*100:+.1f}%")
+          PY

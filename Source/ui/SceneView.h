@@ -16,7 +16,7 @@ public:
         startTimerHz(30);setMouseCursor(juce::MouseCursor::DraggingHandCursor);
         setTooltip("Drag the skeleton: up/down moves it back and forward (distance), left/right turns it away (angle).");
     }
-    void resized() override {backdropScene=-1;}
+    void resized() override {backdropScene=-1;previousBackdrop={};sceneFade=1.f;}
     void paint(juce::Graphics& g) override {
         const auto b=getLocalBounds().toFloat();
         panel(g,b);
@@ -38,7 +38,12 @@ public:
         juce::ColourGradient sky(juce::Colour(0xff0b1411),art.getX(),art.getY(),juce::Colour(0xff040706),art.getX(),art.getBottom(),false);
         g.setGradientFill(sky);g.fillRect(art);
         ensureBackdrop(scene,g.getInternalContext().getPhysicalPixelScaleFactor());
-        if(backdrop.isValid()) g.drawImage(backdrop,art);
+        if(backdrop.isValid()) {
+            if(previousBackdrop.isValid() && sceneFade<1.f) {
+                g.drawImage(previousBackdrop,art);
+                g.setOpacity(sceneFade);g.drawImage(backdrop,art);g.setOpacity(1.f);
+            } else g.drawImage(backdrop,art);
+        }
         for(int i=0;i<16;++i) {   // drifting dust motes
             const float sp=.25f+.75f*hash01(i,3);
             const float px=art.getX()+art.getWidth()*std::fmod(hash01(i,1)+drift*sp,1.f);
@@ -53,6 +58,10 @@ public:
         const float effort=std::clamp(pv.getRawParameterValue("effort")->load(),0.f,1.f);
         const float level=std::clamp(processor.meterPeak.load(std::memory_order_relaxed),0.f,1.f);
         const float cx=art.getCentreX();
+        // Subtle distance haze keeps the foreground and horizon separated.
+        juce::ColourGradient haze(tint.withAlpha(.065f),cx,art.getY()+art.getHeight()*.43f,
+                                  tint.withAlpha(0.f),cx,art.getBottom(),false);
+        g.setGradientFill(haze);g.fillRect(art.withTrimmedTop(art.getHeight()*.43f));
         // ---- ground rings: how far each distance is on the stage
         g.setFont(juce::Font(juce::FontOptions(9.f)));
         for(const float m:{.3f,1.f,3.f,10.f,30.f,100.f}) {
@@ -60,7 +69,7 @@ public:
             const float rw=art.getWidth()*(.18f+.30f*sc);
             g.setColour(Theme::green.withAlpha(.05f+.09f*sc));
             g.drawEllipse(cx-rw,y-4.f*sc-1.f,rw*2.f,8.f*sc+2.f,1.f);
-            g.setColour(Theme::muted.withAlpha(.25f+.30f*sc));
+            g.setColour(Theme::muted.withAlpha(.40f+.35f*sc));
             g.drawText(m<1.f?juce::String("0.3 m"):juce::String(static_cast<int>(m))+" m",cx+rw-34.f,y-6.f,34.f,11.f,juce::Justification::centredRight);
         }
         // ---- skeleton
@@ -103,7 +112,7 @@ public:
         const float rowW=4.f*104.f+3.f*8.f,x0=std::max(14.f,(static_cast<float>(getWidth())-rowW)*.5f);   // centred on wide stages
         chip(g,x0,cy,"DIST",meters(d));
         chip(g,x0+112.f,cy,"DRR",juce::String(dr,1)+" dB");
-        chip(g,x0+224.f,cy,"RT60",juce::String(s.rt60Seconds,1)+" s");
+        chip(g,x0+224.f,cy,"RT60",juce::String(s.rt60Seconds*sizeNow,1)+" s");
         chip(g,x0+336.f,cy,"ECHO",juce::String(echoDelayMs(s.firstEchoMeters*sizeNow),0)+" ms");
     }
     void mouseDown(const juce::MouseEvent& e) override {
@@ -269,6 +278,10 @@ private:
         const int w=juce::roundToInt(a.getWidth()*ps),h=juce::roundToInt(a.getHeight()*ps);
         if(w<8||h<8)return;
         if(scene==backdropScene && backdrop.getWidth()==w && backdrop.getHeight()==h)return;
+        if(backdrop.isValid() && backdropScene>=0 && backdropScene!=scene &&
+           backdrop.getWidth()==w && backdrop.getHeight()==h) {
+            previousBackdrop=backdrop;sceneFade=0.f;
+        } else { previousBackdrop={};sceneFade=1.f; }
         backdrop=juce::Image(juce::Image::ARGB,w,h,true);
         juce::Graphics ig(backdrop);
         ig.addTransform(juce::AffineTransform::scale(ps));
@@ -280,6 +293,11 @@ private:
         return v-std::floor(v);
     }
     void timerCallback() override {
+        if(!isShowing()) return;
+        if(sceneFade<1.f) {
+            sceneFade=std::min(1.f,sceneFade+.125f);
+            if(sceneFade>=1.f) previousBackdrop={};
+        }
         drift=std::fmod(drift+.004f,1000.f);
         pulsePhase=std::fmod(pulsePhase+.016f+.025f*processor.meterEffort.load(std::memory_order_relaxed),1.f);
         // walking: animate while the (smoothed) distance is actually changing
@@ -293,7 +311,8 @@ private:
     }
     SkellAfarAudioProcessor& processor;
     float pulsePhase=0.f,drift=0.f,lateralSign=1.f,lastDistance=3.f,moveAmt=0.f,walkPhase=0.f,breathPhase=0.f;
-    juce::Image backdrop;
+    juce::Image backdrop,previousBackdrop;
+    float sceneFade=1.f;
     int backdropScene=-1;
 };
 }

@@ -98,6 +98,25 @@ inline float directReverbDb(const SpaceSpec& s, float distance) noexcept {
     if (s.isOpen && s.diffuseGain < .06f) return 40.0f - 20.0f * std::log10(std::max(.3f, distance));
     return 20.f * std::log10(approximateCriticalDistance(s) / std::max(.3f, distance));
 }
+// Bounded, perceptual HF air shelf (not an ISO atmospheric model). The
+// low/mid voice band retains its anchor while distant consonants lose treble.
+inline float airTrebleGain(float distance,float absorption,float weather) noexcept {
+    const float loss=std::clamp(std::max(0.f,distance-1.f)*.055f*
+                                std::clamp(absorption,0.f,1.f)*std::clamp(weather,.7f,1.3f),0.f,12.f);
+    return std::pow(10.f,-loss*.05f);
+}
+// High-scatter environments distribute energy across the later taps rather
+// than exaggerating a single reflection. Keep total tap gain exactly unity.
+inline std::array<float,3> reflectionWeights(float scatter) noexcept {
+    const float x=std::clamp(scatter,0.f,1.f);
+    return {.59f-.25f*x,.27f+.07f*x,.14f+.18f*x};
+}
+// Outdoor paths lose more diffuse energy over distance than enclosed paths.
+// Anchor at 3 m so established close/medium presets retain their balance.
+inline float roomDistanceGain(float distance,bool open) noexcept {
+    const float t=std::clamp((distance-3.f)/197.f,0.f,1.f);
+    return 1.f-(open?.22f:.08f)*t;
+}
 inline float echoDelayMs(float oneWayMeters) noexcept {
     return 2000.f * std::max(0.f, oneWayMeters) / speedOfSound;
 }
